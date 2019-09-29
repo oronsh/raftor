@@ -3,23 +3,34 @@ use bytes::{BufMut, BytesMut};
 use tokio::codec::{Decoder, Encoder};
 use serde::{Serialize, Deserialize};
 use serde_json as json;
-use std::fmt::Debug;
+use actix_raft::{NodeId};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum NodeRequest {
     Ping,
-    Join(u64),
+    Join(NodeId),
+    /// Message(msg_id, type_id, payload)
+    Message(u64, MsgTypes, String),
+}
+#[derive(Serialize, Deserialize, Debug)]
+pub enum NodeResponse {
+    Ping,
+    Joined,
+    /// Result(msg_id, payload)
+    Result(u64, String),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub enum NodeResponse {
-    Pong,
-    Joined
+pub enum MsgTypes {
+    AppendEntriesRequest,
+    VoteRequest,
+    InstallSnapshotRequest,
+    ClientPayload,
 }
 
 pub struct NodeCodec;
 
-/// Client -> Server transport
+// Client -> Server transport
 impl Decoder for NodeCodec {
     type Item = NodeRequest;
     type Error = std::io::Error;
@@ -60,7 +71,7 @@ impl Encoder for NodeCodec {
 
 pub struct ClientNodeCodec;
 
-/// Server -> Client transport
+// Server -> Client transport
 impl Decoder for ClientNodeCodec {
     type Item = NodeResponse;
     type Error = std::io::Error;

@@ -1,8 +1,10 @@
+use actix::prelude::*;
 use std::time::{Duration, Instant};
+use tokio::codec::FramedRead;
 use tokio::io::{AsyncRead, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::codec::FramedRead;
-use actix::prelude::*;
+use actix_raft::{NodeId};
+use log::{error};
 
 use crate::network::{
     Network,
@@ -10,6 +12,7 @@ use crate::network::{
     NodeRequest,
     NodeResponse,
     PeerConnected,
+    SendToRaft,
 };
 
 pub struct Listener {
@@ -22,14 +25,10 @@ impl Listener {
         let listener = TcpListener::bind(&server_addr).unwrap();
 
         Listener::create(|ctx| {
-            ctx.add_message_stream(listener
-                                   .incoming()
-                                   .map_err(|_| ())
-                                   .map(NodeConnect)
-            );
+            ctx.add_message_stream(listener.incoming().map_err(|_| ()).map(NodeConnect));
 
             Listener {
-                network: network_addr
+                network: network_addr,
             }
         })
     }
@@ -46,31 +45,34 @@ impl Handler<NodeConnect> for Listener {
     type Result = ();
 
     fn handle(&mut self, msg: NodeConnect, _: &mut Context<Self>) {
-        let remote_addr = msg.0.peer_addr().unwrap();
-
         let (r, w) = msg.0.split();
+        let network = self.network.clone();
 
-        self.network.do_send(PeerConnected(remote_addr.to_string()));
-
-        NodeSession::create(|ctx| {
+        NodeSession::create(move |ctx| {
             NodeSession::add_stream(FramedRead::new(r, NodeCodec), ctx);
-            NodeSession::new(actix::io::FramedWrite::new(w, NodeCodec, ctx))
+            NodeSession::new(actix::io::FramedWrite::new(w, NodeCodec, ctx), network)
         });
     }
 }
 
+
 // NodeSession
-struct NodeSession {
+pub struct NodeSession {
     hb: Instant,
+    network: Addr<Network>,
     framed: actix::io::FramedWrite<WriteHalf<TcpStream>, NodeCodec>,
-    id: Option<u64>,
+    id: Option<NodeId>,
 }
 
 impl NodeSession {
-    fn new(framed: actix::io::FramedWrite<WriteHalf<TcpStream>, NodeCodec>) -> NodeSession {
+    fn new(
+        framed: actix::io::FramedWrite<WriteHalf<TcpStream>, NodeCodec>,
+        network: Addr<Network>,
+    ) -> NodeSession {
         NodeSession {
             hb: Instant::now(),
             framed: framed,
+            network,
             id: None,
         }
     }
@@ -83,7 +85,7 @@ impl NodeSession {
             }
 
             // Reply heartbeat
-            act.framed.write(NodeResponse::Pong);
+            act.framed.write(NodeResponse::Ping);
         });
     }
 }
@@ -98,11 +100,30 @@ impl Actor for NodeSession {
 
 impl actix::io::WriteHandler<std::io::Error> for NodeSession {}
 
+
 impl StreamHandler<NodeRequest, std::io::Error> for NodeSession {
     fn handle(&mut self, msg: NodeRequest, ctx: &mut Context<Self>) {
         match msg {
-            NodeRequest::Join(id) => (),
-            NodeRequest::Ping => self.hb = Instant::now(),
+            NodeRequest::Ping => {
+                self.hb = Instant::now();
+                // println!("Server got ping from {}", self.id.unwrap());
+            },
+            NodeRequest::Join(id) => {
+                self.id = Some(id);
+                self.network.do_send(PeerConnected(id, ctx.address()));
+            },
+            NodeRequest::Message(mid, type_id, body) => {
+                let task = actix::fut::wrap_future(self.network.send(SendToRaft(type_id, body)))
+                    .map_err(|err, _: &mut NodeSession, _| {
+                        error!("{:?}", err);
+                    })
+                    .and_then(move |res, act, _| {
+                        let payload = res.unwrap();
+                        act.framed.write(NodeResponse::Result(mid, payload));
+                        actix::fut::result(Ok(()))
+                    });
+                ctx.spawn(task);
+            },
         }
     }
 }
