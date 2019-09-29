@@ -70,9 +70,6 @@ impl Actor for Node {
 
     fn stopped(&mut self, _: &mut Context<Self>) {
         println!("Disconnected");
-
-        // Stop application on disconnect
-        System::current().stop();
     }
 }
 

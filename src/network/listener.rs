@@ -25,7 +25,7 @@ impl Listener {
             ctx.add_message_stream(listener
                                    .incoming()
                                    .map_err(|_| ())
-                                   .map(NodeConnect)
+                                   .map(NodeConnect),
             );
 
             Listener {
