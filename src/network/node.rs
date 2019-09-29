@@ -50,6 +50,13 @@ impl Node {
 
         ctx.add_message_stream(conn);
     }
+
+    fn hb(&self, ctx: &mut Context<Self>) {
+        ctx.run_later(Duration::new(1, 0), |act, ctx| {
+            act.framed.as_mut().unwrap().write(NodeRequest::Ping);
+            act.hb(ctx);
+        });
+    }
 }
 
 impl Actor for Node {
@@ -59,7 +66,13 @@ impl Actor for Node {
         ctx.run_later(Duration::new(10, 0), |act, ctx| {
             act.connect(ctx);
         });
+    }
 
+    fn stopped(&mut self, _: &mut Context<Self>) {
+        println!("Disconnected");
+
+        // Stop application on disconnect
+        System::current().stop();
     }
 }
 
@@ -77,7 +90,7 @@ impl Handler<TcpConnect> for Node {
         let (r, w) = msg.0.split();
         Node::add_stream(FramedRead::new(r, ClientNodeCodec), ctx);
         self.framed = Some(actix::io::FramedWrite::new(w, ClientNodeCodec, ctx));
-
+        self.hb(ctx);
     }
 }
 
@@ -87,7 +100,8 @@ impl StreamHandler<NodeResponse, std::io::Error> for Node {
     fn handle(&mut self, msg: NodeResponse, ctx: &mut Context<Self>) {
         match msg {
             NodeResponse::Ping => {
-                self.framed.as_mut().unwrap().write(NodeRequest::Ping);
+                println!("Client got Ping!");
+  //              self.framed.as_mut().unwrap().write(NodeRequest::Ping);
             },
             _ => ()
         }

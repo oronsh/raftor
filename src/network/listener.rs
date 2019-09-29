@@ -102,7 +102,10 @@ impl StreamHandler<NodeRequest, std::io::Error> for NodeSession {
     fn handle(&mut self, msg: NodeRequest, ctx: &mut Context<Self>) {
         match msg {
             NodeRequest::Join(id) => (),
-            NodeRequest::Ping => self.hb = Instant::now(),
+            NodeRequest::Ping => {
+                self.hb = Instant::now();
+                println!("Got ping");
+            },
         }
     }
 }
