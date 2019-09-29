@@ -13,7 +13,7 @@ pub enum NodeRequest {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum NodeResponse {
-    Pong,
+    Ping,
     Joined
 }
 

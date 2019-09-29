@@ -83,7 +83,7 @@ impl NodeSession {
             }
 
             // Reply heartbeat
-            act.framed.write(NodeResponse::Pong);
+            act.framed.write(NodeResponse::Ping);
         });
     }
 }
