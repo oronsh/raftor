@@ -1,16 +1,10 @@
+use actix::prelude::*;
 use std::time::{Duration, Instant};
+use tokio::codec::FramedRead;
 use tokio::io::{AsyncRead, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::codec::FramedRead;
-use actix::prelude::*;
 
-use crate::network::{
-    Network,
-    NodeCodec,
-    NodeRequest,
-    NodeResponse,
-    PeerConnected,
-};
+use crate::network::{Network, NodeCodec, NodeRequest, NodeResponse};
 
 pub struct Listener {
     network: Addr<Network>,
@@ -22,14 +16,10 @@ impl Listener {
         let listener = TcpListener::bind(&server_addr).unwrap();
 
         Listener::create(|ctx| {
-            ctx.add_message_stream(listener
-                                   .incoming()
-                                   .map_err(|_| ())
-                                   .map(NodeConnect),
-            );
+            ctx.add_message_stream(listener.incoming().map_err(|_| ()).map(NodeConnect));
 
             Listener {
-                network: network_addr
+                network: network_addr,
             }
         })
     }
@@ -50,11 +40,10 @@ impl Handler<NodeConnect> for Listener {
 
         let (r, w) = msg.0.split();
 
-        self.network.do_send(PeerConnected(remote_addr.to_string()));
-
-        NodeSession::create(|ctx| {
+        let network = self.network.clone();
+        NodeSession::create(move |ctx| {
             NodeSession::add_stream(FramedRead::new(r, NodeCodec), ctx);
-            NodeSession::new(actix::io::FramedWrite::new(w, NodeCodec, ctx))
+            NodeSession::new(actix::io::FramedWrite::new(w, NodeCodec, ctx), network)
         });
     }
 }
@@ -62,15 +51,20 @@ impl Handler<NodeConnect> for Listener {
 // NodeSession
 struct NodeSession {
     hb: Instant,
+    network: Addr<Network>,
     framed: actix::io::FramedWrite<WriteHalf<TcpStream>, NodeCodec>,
     id: Option<u64>,
 }
 
 impl NodeSession {
-    fn new(framed: actix::io::FramedWrite<WriteHalf<TcpStream>, NodeCodec>) -> NodeSession {
+    fn new(
+        framed: actix::io::FramedWrite<WriteHalf<TcpStream>, NodeCodec>,
+        network: Addr<Network>,
+    ) -> NodeSession {
         NodeSession {
             hb: Instant::now(),
             framed: framed,
+            network,
             id: None,
         }
     }
@@ -101,11 +95,11 @@ impl actix::io::WriteHandler<std::io::Error> for NodeSession {}
 impl StreamHandler<NodeRequest, std::io::Error> for NodeSession {
     fn handle(&mut self, msg: NodeRequest, ctx: &mut Context<Self>) {
         match msg {
-            NodeRequest::Join(id) => (),
             NodeRequest::Ping => {
                 self.hb = Instant::now();
                 println!("Got ping");
             },
+            _ => ()
         }
     }
 }

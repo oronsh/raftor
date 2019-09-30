@@ -1,5 +1,3 @@
-extern crate actix;
-
 use std::time::Duration;
 use std::net::SocketAddr;
 use futures::future;
@@ -13,8 +11,10 @@ use crate::network::{
     ClientNodeCodec,
     NodeRequest,
     NodeResponse,
+    PeerConnected,
 };
 
+#[derive(PartialEq)]
 enum NodeState {
     Registered,
     Connected
@@ -40,6 +40,13 @@ impl Node {
     }
 
     fn connect(&mut self, ctx: &mut Context<Self>) {
+        // node is already connected
+        if self.state == NodeState::Connected {
+            return ();
+        }
+
+        println!("Connecting to node #{}", self.id);
+
         let remote_addr = self.peer_addr.as_str().parse().unwrap();
         let conn = TcpStream::connect(&remote_addr)
             .map_err(|e| {
@@ -63,13 +70,11 @@ impl Actor for Node {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Context<Self>) {
-        ctx.run_later(Duration::new(10, 0), |act, ctx| {
-            act.connect(ctx);
-        });
+        ctx.notify(Connect);
     }
 
     fn stopped(&mut self, _: &mut Context<Self>) {
-        println!("Disconnected");
+        println!("Node #{} disconnected", self.id);
     }
 }
 
@@ -77,17 +82,32 @@ impl Actor for Node {
 struct TcpConnect(TcpStream);
 
 #[derive(Message)]
-struct ResponseStream;
+struct Connect;
 
 impl Handler<TcpConnect> for Node {
     type Result = ();
 
     fn handle(&mut self, msg: TcpConnect, ctx: &mut Context<Self>) {
-        println!("Connection established!");
+        println!("Connected to remote node #{}", self.id);
+        self.state = NodeState::Connected;
         let (r, w) = msg.0.split();
         Node::add_stream(FramedRead::new(r, ClientNodeCodec), ctx);
         self.framed = Some(actix::io::FramedWrite::new(w, ClientNodeCodec, ctx));
         self.hb(ctx);
+
+        // TODO: notify network that connection establishted for remote node
+    }
+}
+
+
+impl Handler<Connect> for Node {
+    type Result = ();
+
+    fn handle(&mut self, _msg: Connect, ctx: &mut Context<Self>) {
+        ctx.run_later(Duration::new(2, 0), |act, ctx| {
+            act.connect(ctx);
+            ctx.notify(Connect);
+        });
     }
 }
 
@@ -98,8 +118,7 @@ impl StreamHandler<NodeResponse, std::io::Error> for Node {
         match msg {
             NodeResponse::Ping => {
                 println!("Client got Ping!");
-  //              self.framed.as_mut().unwrap().write(NodeRequest::Ping);
-            },
+              },
             _ => ()
         }
     }

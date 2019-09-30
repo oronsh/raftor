@@ -60,12 +60,12 @@ impl Actor for Network {
 }
 
 #[derive(Message, Debug)]
-pub struct PeerConnected(pub String);
+pub struct PeerConnected(pub u64);
 
 impl Handler<PeerConnected> for Network {
     type Result = ();
 
     fn handle(&mut self, msg: PeerConnected, ctx: &mut Context<Self>) {
-        println!("Registering peer addr {}", msg.0);
+        println!("Registering node {}", msg.0);
     }
 }
