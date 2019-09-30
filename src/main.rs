@@ -9,12 +9,19 @@ fn main() {
 
     let args: Vec<String> = env::args().collect();
     let local_address = args[1].as_str();
-    let remote_address = args[2].as_str();
 
-    net.register_node(remote_address);
+    /// listen on ip and port
     net.listen(local_address);
 
-    net.start();
+    /// register peers
+    let peers = vec![
+        "127.0.0.1:8000",
+        "127.0.0.1:8001",
+        "127.0.0.1:8002",
+    ];
 
+    net.peers(peers);
+
+    net.start();
     sys.run();
 }

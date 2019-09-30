@@ -4,7 +4,7 @@ use tokio::codec::FramedRead;
 use tokio::io::{AsyncRead, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 
-use crate::network::{Network, NodeCodec, NodeRequest, NodeResponse};
+use crate::network::{Network, NodeCodec, NodeRequest, NodeResponse, PeerConnected};
 
 pub struct Listener {
     network: Addr<Network>,
@@ -37,7 +37,6 @@ impl Handler<NodeConnect> for Listener {
 
     fn handle(&mut self, msg: NodeConnect, _: &mut Context<Self>) {
         let remote_addr = msg.0.peer_addr().unwrap();
-
         let (r, w) = msg.0.split();
 
         let network = self.network.clone();
@@ -97,7 +96,11 @@ impl StreamHandler<NodeRequest, std::io::Error> for NodeSession {
         match msg {
             NodeRequest::Ping => {
                 self.hb = Instant::now();
-                println!("Got ping");
+                println!("Server got ping from {}", self.id.unwrap());
+            },
+            NodeRequest::Join(id) => {
+                self.id = Some(id);
+                self.network.do_send(PeerConnected(id));
             },
             _ => ()
         }

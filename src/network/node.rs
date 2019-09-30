@@ -75,6 +75,7 @@ impl Actor for Node {
 
     fn stopped(&mut self, _: &mut Context<Self>) {
         println!("Node #{} disconnected", self.id);
+        // TODO: remove from network.nodes_connected
     }
 }
 
@@ -93,9 +94,9 @@ impl Handler<TcpConnect> for Node {
         let (r, w) = msg.0.split();
         Node::add_stream(FramedRead::new(r, ClientNodeCodec), ctx);
         self.framed = Some(actix::io::FramedWrite::new(w, ClientNodeCodec, ctx));
-        self.hb(ctx);
 
-        // TODO: notify network that connection establishted for remote node
+        self.framed.as_mut().unwrap().write(NodeRequest::Join(self.id));
+        self.hb(ctx);
     }
 }
 
@@ -117,7 +118,7 @@ impl StreamHandler<NodeResponse, std::io::Error> for Node {
     fn handle(&mut self, msg: NodeResponse, ctx: &mut Context<Self>) {
         match msg {
             NodeResponse::Ping => {
-                println!("Client got Ping!");
+                println!("Client got Ping from {}", self.id);
               },
             _ => ()
         }
