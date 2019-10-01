@@ -73,7 +73,7 @@ impl Actor for Network {
         println!("Local node id: {}", self.id);
         let listener_addr = Listener::new(network_address.as_str(), ctx.address().clone());
         self.listener = Some(listener_addr);
-
+        self.nodes_connected.push(self.id); // push local id
         // register nodes
         let peers = self.peers.clone();
         for peer in peers {
@@ -86,7 +86,7 @@ impl Actor for Network {
             let num_nodes = act.nodes_connected.len();
 
             if num_nodes > 1 {
-                println!("Starting cluster with {} nodes", num_nodes + 1);
+                println!("Starting cluster with {} nodes", num_nodes);
                 act.state = NetworkState::Cluster;
             } else {
                 println!("Starting in single node mode");
