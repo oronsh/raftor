@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 use tokio::codec::FramedRead;
 use tokio::io::{AsyncRead, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
+use actix_raft::{NodeId};
 
 use crate::network::{Network, NodeCodec, NodeRequest, NodeResponse, PeerConnected};
 
@@ -52,7 +53,7 @@ struct NodeSession {
     hb: Instant,
     network: Addr<Network>,
     framed: actix::io::FramedWrite<WriteHalf<TcpStream>, NodeCodec>,
-    id: Option<u64>,
+    id: Option<NodeId>,
 }
 
 impl NodeSession {

@@ -1,9 +1,10 @@
-use crate::network::{Listener, Node};
-use crate::utils::generate_node_id;
-
+use actix_raft::{NodeId};
 use std::time::Duration;
 use actix::prelude::*;
 use std::collections::HashMap;
+
+use crate::network::{Listener, Node};
+use crate::utils::generate_node_id;
 
 pub enum NetworkState {
     Initialized,
@@ -12,11 +13,11 @@ pub enum NetworkState {
 }
 
 pub struct Network {
-    id: u64,
+    id: NodeId,
     address: Option<String>,
     peers: Vec<String>,
-    nodes: HashMap<u64, Addr<Node>>,
-    nodes_connected: Vec<u64>,
+    nodes: HashMap<NodeId, Addr<Node>>,
+    nodes_connected: Vec<NodeId>,
     listener: Option<Addr<Listener>>,
     state: NetworkState
 }
@@ -49,7 +50,7 @@ impl Network {
     }
 
     // get a node from the network by its id
-    pub fn get_node(&mut self, id: u64) -> Option<&Addr<Node>> {
+    pub fn get_node(&mut self, id: NodeId) -> Option<&Addr<Node>> {
         self.nodes.get(&id)
     }
 
@@ -97,7 +98,7 @@ impl Actor for Network {
 }
 
 #[derive(Message, Debug)]
-pub struct PeerConnected(pub u64);
+pub struct PeerConnected(pub NodeId);
 
 impl Handler<PeerConnected> for Network {
     type Result = ();

@@ -5,6 +5,7 @@ use tokio::net::TcpStream;
 use tokio::io::{AsyncRead, WriteHalf};
 use tokio::codec::FramedRead;
 use actix::prelude::*;
+use actix_raft::{NodeId};
 
 use crate::network::{
     Network,
@@ -21,7 +22,7 @@ enum NodeState {
 }
 
 pub struct Node {
-    id: u64,
+    id: NodeId,
     state: NodeState,
     peer_addr: String,
     framed: Option<actix::io::FramedWrite<WriteHalf<TcpStream>, ClientNodeCodec>>,
