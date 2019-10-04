@@ -2,6 +2,9 @@ use byteorder::{BigEndian, ByteOrder};
 use bytes::{BufMut, BytesMut};
 use tokio::codec::{Decoder, Encoder};
 use serde::{Serialize, Deserialize};
+use std::collections::HashMap;
+use std::cell::RefCell;
+use std::rc::Rc;
 use serde_json as json;
 use std::fmt::Debug;
 use actix_raft::{
@@ -16,24 +19,34 @@ use actix_raft::{
     }
 };
 
+use crate::network::{Request, ReqTable};
 
-#[derive(Serialize, Deserialize, Debug, Message)]
-pub enum NodeRequest {
+#[derive(Serialize, Deserialize, Debug)]
+pub struct NodeRequest {
+    id: String,
+    payload: NodePayload,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct NodeResponse {
+    id: String,
+    payload: NodePayload,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum NodePayload {
     Ping,
     Join(NodeId),
     AppendEntriesRequest,
-    AppendEntriesResponse,
     InstallSnapshotRequest,
-    InstallSnapshotResponse,
     VoteRequest,
+    Joined,
     VoteResponse,
+    AppendEntriesResponse,
+    InstallSnapshotResponse,
 }
 
-#[derive(Serialize, Deserialize, Debug, Message)]
-pub enum NodeResponse {
-    Ping,
-    Joined
-}
+
 
 pub struct NodeCodec;
 

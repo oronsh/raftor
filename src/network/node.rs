@@ -1,5 +1,6 @@
 use std::time::Duration;
 use std::net::SocketAddr;
+use std::collections::HashMap;
 use futures::future;
 use tokio::net::TcpStream;
 use tokio::io::{AsyncRead, WriteHalf};
@@ -13,6 +14,8 @@ use crate::network::{
     NodeRequest,
     NodeResponse,
     PeerConnected,
+    Request,
+    ReqTable,
 };
 
 #[derive(PartialEq)]
@@ -26,6 +29,7 @@ pub struct Node {
     state: NodeState,
     peer_addr: String,
     framed: Option<actix::io::FramedWrite<WriteHalf<TcpStream>, ClientNodeCodec>>,
+    requests: ReqTable,
 }
 
 impl Node {
@@ -36,6 +40,7 @@ impl Node {
                 state: NodeState::Registered,
                 peer_addr: peer_addr,
                 framed: None,
+                requests: Request::create_req_table(),
             }
         })
     }
@@ -93,7 +98,7 @@ impl Handler<TcpConnect> for Node {
         println!("Connected to remote node #{}", self.id);
         self.state = NodeState::Connected;
         let (r, w) = msg.0.split();
-        Node::add_stream(FramedRead::new(r, ClientNodeCodec), ctx);
+        Node::add_stream(FramedRead::new(r, ClientNodeCodec, ctx));
         self.framed = Some(actix::io::FramedWrite::new(w, ClientNodeCodec, ctx));
 
         self.framed.as_mut().unwrap().write(NodeRequest::Join(self.id));
