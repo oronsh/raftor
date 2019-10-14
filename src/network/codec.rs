@@ -19,35 +19,18 @@ use actix_raft::{
     }
 };
 
-use crate::network::{Request, ReqTable};
-
 #[derive(Serialize, Deserialize, Debug)]
-pub struct NodeRequest {
-    id: String,
-    payload: NodePayload,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct NodeResponse {
-    id: String,
-    payload: NodePayload,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub enum NodePayload {
+pub enum NodeRequest {
     Ping,
     Join(NodeId),
-    AppendEntriesRequest,
-    InstallSnapshotRequest,
-    VoteRequest,
-    Joined,
-    VoteResponse,
-    AppendEntriesResponse,
-    InstallSnapshotResponse,
+    Message(u64, String),
 }
-
-
-
+#[derive(Serialize, Deserialize, Debug)]
+pub enum NodeResponse {
+    Ping,
+    Joined,
+    Result(u64, String),
+}
 pub struct NodeCodec;
 
 // Client -> Server transport
