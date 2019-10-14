@@ -113,18 +113,18 @@ impl Handler<TcpConnect> for Node {
 
 struct SendRaftMessage<M>(pub M)
 where M: Message + Send + Serialize + DeserializeOwned + 'static,
-      M::Result: Send + Serialize + DeserializeOwned + 'static;
+      M::Result: Send + Serialize + DeserializeOwned;
 
 impl<M> Message for SendRaftMessage<M>
 where M: Message + Send + Serialize + DeserializeOwned + 'static,
-      M::Result: Send + Serialize + DeserializeOwned + 'static
+      M::Result: Send + Serialize + DeserializeOwned
 {
     type Result = Result<M::Result, ()>;
 }
 
 impl<M> Handler<SendRaftMessage<M>> for Node
 where M: Message + Send + Serialize + DeserializeOwned + 'static,
-      M::Result: Send + Serialize + DeserializeOwned + 'static
+      M::Result: Send + Serialize + DeserializeOwned
 {
     type Result = RemoteMessageResult<M>;
 
@@ -175,7 +175,7 @@ impl StreamHandler<NodeResponse, std::io::Error> for Node {
 
 struct RemoteMessageResult<M>
     where M: Message + Send + Serialize + DeserializeOwned + 'static,
-          M::Result: Send + Serialize + DeserializeOwned + 'static
+          M::Result: Send + Serialize + DeserializeOwned
 {
     rx: oneshot::Receiver<M::Result>,
     m: PhantomData<M>,
