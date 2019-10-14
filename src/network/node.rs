@@ -111,7 +111,7 @@ impl Handler<TcpConnect> for Node {
     }
 }
 
-struct SendRaftMessage<M>(pub M)
+pub struct SendRaftMessage<M>(pub M)
 where M: Message + Send + Serialize + DeserializeOwned + 'static,
       M::Result: Send + Serialize + DeserializeOwned;
 
@@ -173,7 +173,7 @@ impl StreamHandler<NodeResponse, std::io::Error> for Node {
     }
 }
 
-struct RemoteMessageResult<M>
+pub struct RemoteMessageResult<M>
     where M: Message + Send + Serialize + DeserializeOwned + 'static,
           M::Result: Send + Serialize + DeserializeOwned
 {

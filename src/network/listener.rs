@@ -103,6 +103,9 @@ impl StreamHandler<NodeRequest, std::io::Error> for NodeSession {
                 self.id = Some(id);
                 self.network.do_send(PeerConnected(id));
             },
+            NodeRequest::Message(mid, payload) => {
+
+            },
             _ => ()
         }
     }
