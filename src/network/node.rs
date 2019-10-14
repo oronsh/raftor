@@ -119,7 +119,7 @@ impl<M> Message for SendRaftMessage<M>
 where M: Message + Send + Serialize + DeserializeOwned + 'static,
       M::Result: Send + Serialize + DeserializeOwned
 {
-    type Result = Result<M::Result, ()>;
+    type Result = M::Result;
 }
 
 impl<M> Handler<SendRaftMessage<M>> for Node
@@ -140,7 +140,7 @@ where M: Message + Send + Serialize + DeserializeOwned + 'static,
             framed.write(request);
         }
 
-        Response::fut(futures::future::ok(NodeResponse::Ping))
+        RemoteMessageResult{rx: rx, m: PhantomData}
     }
 }
 
@@ -160,9 +160,9 @@ impl actix::io::WriteHandler<std::io::Error> for Node {}
 impl StreamHandler<NodeResponse, std::io::Error> for Node {
     fn handle(&mut self, msg: NodeResponse, ctx: &mut Context<Self>) {
         match msg {
-            NodeResponse::Result(mid, payload) => {
+            NodeResponse::Result(mid, data) => {
                 if let Some(tx) = self.requests.remove(&mid) {
-                    // let body = serde_json::from_slice::<>()
+                    let _ = tx.send(data);
                 }
             },
             NodeResponse::Ping => {
@@ -177,7 +177,7 @@ struct RemoteMessageResult<M>
     where M: Message + Send + Serialize + DeserializeOwned + 'static,
           M::Result: Send + Serialize + DeserializeOwned
 {
-    rx: oneshot::Receiver<M::Result>,
+    rx: oneshot::Receiver<String>,
     m: PhantomData<M>,
 }
 
@@ -187,7 +187,7 @@ where
       M::Result: Send + Serialize + DeserializeOwned
 {
     fn handle<R: ResponseChannel<SendRaftMessage<M>>>(self, _: &mut Context<Node>, tx: Option<R>) {
-        Arbiter::handle().spawn(
+        Arbiter::spawn(
             self.rx
                 .map_err(|e| ())
                 .and_then(move |msg| {
