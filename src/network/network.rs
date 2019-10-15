@@ -6,6 +6,8 @@ use log::{debug};
 
 use crate::network::{Listener, Node};
 use crate::utils::generate_node_id;
+use crate::raft::{MemRaft, RaftNode};
+
 
 pub enum NetworkState {
     Initialized,
@@ -16,6 +18,7 @@ pub enum NetworkState {
 pub struct Network {
     id: NodeId,
     address: Option<String>,
+    raft: Option<RaftNode>,
     peers: Vec<String>,
     nodes: HashMap<NodeId, Addr<Node>>,
     nodes_connected: Vec<NodeId>,
@@ -31,6 +34,7 @@ impl Network {
             address: None,
             peers: Vec::new(),
             nodes: HashMap::new(),
+            raft: None,
             listener: None,
             nodes_connected: Vec::new(),
             state: NetworkState::Initialized,
@@ -92,6 +96,12 @@ impl Actor for Network {
             if num_nodes > 1 {
                 println!("Starting cluster with {} nodes", num_nodes);
                 act.state = NetworkState::Cluster;
+                let network_addr = ctx.address();
+                let members = act.nodes_connected.clone();
+                let id = act.id;
+                let raft_addr = RaftNode::new(id , members, network_addr);
+
+                act.raft = Some(raft_addr);
             } else {
                 println!("Starting in single node mode");
                 act.state = NetworkState::SingleNode;
