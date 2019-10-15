@@ -2,7 +2,11 @@ use actix::prelude::*;
 use actix_raft::{RaftNetwork, messages};
 
 use crate::network::{Network, SendRaftMessage};
-use crate::data::Data;
+use crate::raft::{
+    storage::{
+        MemoryStorageData as Data
+    }
+};
 
 
 const ERR_ROUTING_FAILURE: &str = "Routing failures are not allowed in tests.";

@@ -1,7 +1,8 @@
-use actix_raft::{NodeId};
+use actix_raft::{NodeId, RaftMetrics};
 use std::time::Duration;
 use actix::prelude::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
+use log::{debug};
 
 use crate::network::{Listener, Node};
 use crate::utils::generate_node_id;
@@ -19,7 +20,8 @@ pub struct Network {
     nodes: HashMap<NodeId, Addr<Node>>,
     nodes_connected: Vec<NodeId>,
     listener: Option<Addr<Listener>>,
-    state: NetworkState
+    state: NetworkState,
+    pub metrics: BTreeMap<NodeId, RaftMetrics>,
 }
 
 impl Network {
@@ -32,6 +34,7 @@ impl Network {
             listener: None,
             nodes_connected: Vec::new(),
             state: NetworkState::Initialized,
+            metrics: BTreeMap::new(),
         }
     }
 
@@ -106,5 +109,21 @@ impl Handler<PeerConnected> for Network {
     fn handle(&mut self, msg: PeerConnected, ctx: &mut Context<Self>) {
         // println!("Registering node {}", msg.0);
         self.nodes_connected.push(msg.0);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+// RaftMetrics ///////////////////////////////////////////////////////////////
+
+impl Handler<RaftMetrics> for Network {
+    type Result = ();
+
+    fn handle(&mut self, msg: RaftMetrics, _: &mut Context<Self>) -> Self::Result {
+        debug!("Metrics: node={} state={:?} leader={:?} term={} index={} applied={} cfg={{join={} members={:?} non_voters={:?} removing={:?}}}",
+            msg.id, msg.state, msg.current_leader, msg.current_term, msg.last_log_index, msg.last_applied,
+            msg.membership_config.is_in_joint_consensus, msg.membership_config.members,
+            msg.membership_config.non_voters, msg.membership_config.removing,
+        );
+        self.metrics.insert(msg.id, msg);
     }
 }
