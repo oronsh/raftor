@@ -5,10 +5,13 @@ use tokio::io::{AsyncRead, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 use actix_raft::{NodeId};
 
+use crate::raft::MemRaft;
+
 use crate::network::{Network, NodeCodec, NodeRequest, NodeResponse, PeerConnected};
 
 pub struct Listener {
     network: Addr<Network>,
+    raft: Option<Addr<MemRaft>>,
 }
 
 impl Listener {
@@ -21,6 +24,7 @@ impl Listener {
 
             Listener {
                 network: network_addr,
+                raft: None,
             }
         })
     }
@@ -45,6 +49,17 @@ impl Handler<NodeConnect> for Listener {
             NodeSession::add_stream(FramedRead::new(r, NodeCodec), ctx);
             NodeSession::new(actix::io::FramedWrite::new(w, NodeCodec, ctx), network)
         });
+    }
+}
+
+#[derive(Message)]
+pub struct RaftCreated(pub Addr<MemRaft>);
+
+impl Handler<RaftCreated> for Listener {
+    type Result = ();
+
+    fn handle(&mut self, msg: RaftCreated, ctx: &mut Context<Self>) {
+        self.raft = Some(msg.0);
     }
 }
 

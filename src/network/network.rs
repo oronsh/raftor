@@ -90,7 +90,7 @@ impl Actor for Network {
             }
         }
 
-        ctx.run_later(Duration::new(20, 0), |act, ctx| {
+        ctx.run_later(Duration::new(10, 0), |act, ctx| {
             let num_nodes = act.nodes_connected.len();
 
             if num_nodes > 1 {
@@ -99,9 +99,11 @@ impl Actor for Network {
                 let network_addr = ctx.address();
                 let members = act.nodes_connected.clone();
                 let id = act.id;
-                let raft_addr = RaftNode::new(id , members, network_addr);
+                let raft_node = RaftNode::new(id , members, network_addr);
 
-                act.raft = Some(raft_addr);
+                act.raft = Some(raft_node);
+
+
             } else {
                 println!("Starting in single node mode");
                 act.state = NetworkState::SingleNode;
