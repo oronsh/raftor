@@ -23,12 +23,14 @@ use actix_raft::{
 pub enum NodeRequest {
     Ping,
     Join(NodeId),
-    Message(u64, String),
+    /// Message(msg_id, type_id, payload)
+    Message(u64, String, String),
 }
 #[derive(Serialize, Deserialize, Debug)]
 pub enum NodeResponse {
     Ping,
     Joined,
+    /// Result(msg_id, payload)
     Result(u64, String),
 }
 pub struct NodeCodec;

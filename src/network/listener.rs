@@ -45,6 +45,8 @@ impl Handler<NodeConnect> for Listener {
         let (r, w) = msg.0.split();
 
         let network = self.network.clone();
+        let raft =
+
         NodeSession::create(move |ctx| {
             NodeSession::add_stream(FramedRead::new(r, NodeCodec), ctx);
             NodeSession::new(actix::io::FramedWrite::new(w, NodeCodec, ctx), network)
@@ -118,8 +120,8 @@ impl StreamHandler<NodeRequest, std::io::Error> for NodeSession {
                 self.id = Some(id);
                 self.network.do_send(PeerConnected(id));
             },
-            NodeRequest::Message(mid, payload) => {
-
+            NodeRequest::Message(mid, type_id, message) => {
+                // TODO: find a way to deserialize message > send to raft > send result to client
             },
             _ => ()
         }

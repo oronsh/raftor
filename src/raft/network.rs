@@ -1,7 +1,10 @@
 use actix::prelude::*;
 use actix_raft::{RaftNetwork, messages};
 
-use crate::network::{Network, SendRaftMessage};
+use crate::network::{
+    Network,
+    remote::{SendRaftMessage},
+};
 use crate::raft::{
     storage::{
         MemoryStorageData as Data

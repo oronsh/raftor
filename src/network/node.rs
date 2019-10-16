@@ -19,6 +19,11 @@ use crate::network::{
     NodeRequest,
     NodeResponse,
     PeerConnected,
+    remote::{
+        RemoteMessage,
+        RemoteMessageResult,
+        SendRaftMessage
+    }
 };
 
 #[derive(PartialEq)]
@@ -111,19 +116,8 @@ impl Handler<TcpConnect> for Node {
     }
 }
 
-pub struct SendRaftMessage<M>(pub M)
-where M: Message + Send + Serialize + DeserializeOwned + 'static,
-      M::Result: Send + Serialize + DeserializeOwned;
-
-impl<M> Message for SendRaftMessage<M>
-where M: Message + Send + Serialize + DeserializeOwned + 'static,
-      M::Result: Send + Serialize + DeserializeOwned
-{
-    type Result = M::Result;
-}
-
 impl<M> Handler<SendRaftMessage<M>> for Node
-where M: Message + Send + Serialize + DeserializeOwned + 'static,
+where M: RemoteMessage + 'static,
       M::Result: Send + Serialize + DeserializeOwned
 {
     type Result = RemoteMessageResult<M>;
@@ -136,7 +130,7 @@ where M: Message + Send + Serialize + DeserializeOwned + 'static,
             self.requests.insert(self.mid, tx);
 
             let body = serde_json::to_string::<M>(&msg.0).unwrap();
-            let request = NodeRequest::Message(0, body);
+            let request = NodeRequest::Message(self.mid, M::type_id().to_string(), body);
             framed.write(request);
         }
 
@@ -170,33 +164,5 @@ impl StreamHandler<NodeResponse, std::io::Error> for Node {
               },
             _ => ()
         }
-    }
-}
-
-pub struct RemoteMessageResult<M>
-    where M: Message + Send + Serialize + DeserializeOwned + 'static,
-          M::Result: Send + Serialize + DeserializeOwned
-{
-    rx: oneshot::Receiver<String>,
-    m: PhantomData<M>,
-}
-
-impl<M> MessageResponse<Node, SendRaftMessage<M>> for RemoteMessageResult<M>
-where
-      M: Message + Send + Serialize + DeserializeOwned + 'static,
-      M::Result: Send + Serialize + DeserializeOwned
-{
-    fn handle<R: ResponseChannel<SendRaftMessage<M>>>(self, _: &mut Context<Node>, tx: Option<R>) {
-        Arbiter::spawn(
-            self.rx
-                .map_err(|e| ())
-                .and_then(move |msg| {
-                    let msg = serde_json::from_slice::<M::Result>(msg.as_ref()).unwrap();
-                    if let Some(tx) = tx {
-                        let _ = tx.send(msg);
-                    }
-                    Ok(())
-                })
-        );
     }
 }
