@@ -19,10 +19,13 @@ use crate::network::{
     NodeRequest,
     NodeResponse,
     PeerConnected,
+    Listener,
     remote::{
         RemoteMessage,
         RemoteMessageResult,
-        SendRaftMessage
+        SendRaftMessage,
+        Provider,
+        RegisterMessage,
     }
 };
 
@@ -39,10 +42,11 @@ pub struct Node {
     peer_addr: String,
     framed: Option<actix::io::FramedWrite<WriteHalf<TcpStream>, ClientNodeCodec>>,
     requests: HashMap<u64, oneshot::Sender<String>>,
+    listener: Addr<Listener>,
 }
 
 impl Node {
-    pub fn new(id: u64, peer_addr: String) -> Addr<Self> {
+    pub fn new(id: u64, peer_addr: String, listener: Addr<Listener>) -> Addr<Self> {
         Node::create(move |_ctx| {
             Node {
                 id: id,
@@ -51,6 +55,7 @@ impl Node {
                 peer_addr: peer_addr,
                 framed: None,
                 requests: HashMap::new(),
+                listener: listener,
             }
         })
     }
@@ -79,6 +84,16 @@ impl Node {
             act.framed.as_mut().unwrap().write(NodeRequest::Ping);
             act.hb(ctx);
         });
+    }
+
+    pub fn register_message<M>(&self, recipient: Recipient<M>)
+    where
+        M: RemoteMessage + 'static,
+        M::Result: Send + Serialize + DeserializeOwned
+    {
+        let r = Provider{recipient: recipient};
+        let msg = RegisterMessage{type_id: M::type_id(), handler: Box::new(r)};
+        self.listener.do_send(msg);
     }
 }
 

@@ -4,14 +4,27 @@ use tokio::codec::FramedRead;
 use tokio::io::{AsyncRead, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 use actix_raft::{NodeId};
+use std::collections::HashMap;
+use serde::{Serialize, de::DeserializeOwned};
 
 use crate::raft::MemRaft;
-
-use crate::network::{Network, NodeCodec, NodeRequest, NodeResponse, PeerConnected};
+use crate::network::{
+    Network,
+    NodeCodec,
+    NodeRequest,
+    NodeResponse,
+    PeerConnected,
+    remote::{
+        RemoteMessageHandler,
+        RegisterMessage,
+        RemoteMessage,
+    },
+};
 
 pub struct Listener {
     network: Addr<Network>,
     raft: Option<Addr<MemRaft>>,
+    handlers: HashMap<&'static str, Box<dyn RemoteMessageHandler>>,
 }
 
 impl Listener {
@@ -25,6 +38,7 @@ impl Listener {
             Listener {
                 network: network_addr,
                 raft: None,
+                handlers: HashMap::new(),
             }
         })
     }
@@ -32,6 +46,15 @@ impl Listener {
 
 impl Actor for Listener {
     type Context = Context<Self>;
+}
+
+impl Handler<RegisterMessage> for Listener
+{
+    type Result = ();
+
+    fn handle(&mut self, msg: RegisterMessage, ctx: &mut Context<Self>) {
+        self.handlers.insert(msg.type_id, msg.handler);
+    }
 }
 
 #[derive(Message)]

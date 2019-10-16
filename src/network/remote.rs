@@ -43,7 +43,7 @@ where
     }
 }
 
-pub trait RemoteMessageHandler {
+pub trait RemoteMessageHandler: Send {
     fn handle(&self, msg: String, sender: oneshot::Sender<String>);
 }
 
@@ -88,6 +88,12 @@ where M: RemoteMessage + 'static,
       M::Result: Send + Serialize + DeserializeOwned
 {
     type Result = M::Result;
+}
+
+#[derive(Message)]
+pub struct RegisterMessage {
+    pub type_id: &'static str,
+    pub handler: Box<dyn RemoteMessageHandler>,
 }
 
 /// Impl RemoteMessage for RaftNetwork messages

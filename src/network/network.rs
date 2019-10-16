@@ -8,7 +8,6 @@ use crate::network::{Listener, Node};
 use crate::utils::generate_node_id;
 use crate::raft::{MemRaft, RaftNode};
 
-
 pub enum NetworkState {
     Initialized,
     SingleNode,
