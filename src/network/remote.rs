@@ -43,17 +43,42 @@ where
     }
 }
 
-pub trait RemoteMessageHandler: Send + Sync {
-    fn handle(&self, msg: String, sender: Sender<String>);
+pub trait RemoteMessageHandler {
+    fn handle(&self, msg: String, sender: oneshot::Sender<String>);
 }
 
 pub struct Provider<M>
-where M: RemoteMessage + 'static,
-      M::Result: Send + Serialize + DeserializeOwned
+where
+    M: RemoteMessage + 'static,
+    M::Result: Send + Serialize + DeserializeOwned
 {
     pub recipient: Recipient<M>,
 }
 
+impl<M> RemoteMessageHandler for Provider<M>
+where
+    M: RemoteMessage + 'static,
+    M::Result: Send + Serialize + DeserializeOwned
+{
+    fn handle(&self, msg: String, sender: oneshot::Sender<String>) {
+        let msg = serde_json::from_slice::<M>(msg.as_ref()).unwrap();
+
+        Arbiter::spawn(
+            self.recipient.send(msg)
+                .then(|res| {
+                    match res {
+                        Ok(res) => {
+                            let body = serde_json::to_string::<M::Result>(&res).unwrap();
+                            let _ = sender.send(body);
+                        },
+                        Err(_) => ()
+                    }
+
+                    Ok(())
+                })
+        );
+    }
+}
 pub struct SendRaftMessage<M>(pub M)
 where M: RemoteMessage + 'static,
       M::Result: Send + Serialize + DeserializeOwned;
