@@ -2,13 +2,16 @@ use actix::prelude::*;
 use actix::dev::{MessageResponse, ResponseChannel};
 use std::marker::PhantomData;
 use serde::{Serialize, de::DeserializeOwned};
+use std::sync::Arc;
 use tokio::sync::oneshot;
 use actix_raft::{
     AppData,
+    AppError,
     messages,
 };
 
 use crate::network::Node;
+use crate::raft::MemRaft;
 
 pub trait RemoteMessage: Message + Send + Serialize + DeserializeOwned
 where Self::Result: Send + Serialize + DeserializeOwned {
@@ -46,24 +49,25 @@ where
 pub trait RemoteMessageHandler: Send {
     fn handle(&self, msg: String, sender: oneshot::Sender<String>);
 }
-
+#[derive(Clone)]
 pub struct Provider<M>
 where
     M: RemoteMessage + 'static,
-    M::Result: Send + Serialize + DeserializeOwned
-{
-    pub recipient: Recipient<M>,
+    M::Result: Send + Serialize + DeserializeOwned,
+ {
+    pub recipient: Addr<MemRaft>,
+    pub m: PhantomData<M>,
 }
 
 impl<M> RemoteMessageHandler for Provider<M>
 where
     M: RemoteMessage + 'static,
-    M::Result: Send + Serialize + DeserializeOwned
-{
+    M::Result: Send + Serialize + DeserializeOwned,
+ {
     fn handle(&self, msg: String, sender: oneshot::Sender<String>) {
         let msg = serde_json::from_slice::<M>(msg.as_ref()).unwrap();
 
-        Arbiter::spawn(
+/*        Arbiter::spawn(
             self.recipient.send(msg)
                 .then(|res| {
                     match res {
@@ -76,9 +80,10 @@ where
 
                     Ok(())
                 })
-        );
+        );*/
     }
 }
+
 pub struct SendRaftMessage<M>(pub M)
 where M: RemoteMessage + 'static,
       M::Result: Send + Serialize + DeserializeOwned;
@@ -90,11 +95,8 @@ where M: RemoteMessage + 'static,
     type Result = M::Result;
 }
 
-#[derive(Message)]
-pub struct RegisterMessage {
-    pub type_id: &'static str,
-    pub handler: Box<dyn RemoteMessageHandler>,
-}
+#[derive(Message, Clone)]
+pub struct RegisterHandler(pub Addr<MemRaft>);
 
 /// Impl RemoteMessage for RaftNetwork messages
 impl<D: AppData> RemoteMessage for messages::AppendEntriesRequest<D> {
@@ -107,4 +109,8 @@ impl RemoteMessage for messages::VoteRequest {
 
 impl RemoteMessage for messages::InstallSnapshotRequest {
     fn type_id() -> &'static str { "InstallSnapshotRequest" }
+}
+
+impl<D: AppData, E: AppError> RemoteMessage for messages::ClientPayload<D, E> {
+    fn type_id() -> &'static str { "ClientPayload" }
 }

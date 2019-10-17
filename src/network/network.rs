@@ -1,10 +1,24 @@
 use actix_raft::{NodeId, RaftMetrics};
 use std::time::Duration;
 use actix::prelude::*;
+use std::marker::PhantomData;
+use std::sync::Arc;
 use std::collections::{HashMap, BTreeMap};
+use serde::{Serialize, de::DeserializeOwned};
 use log::{debug};
 
-use crate::network::{Listener, Node};
+use crate::network::{
+    Listener,
+    RaftCreated,
+    NodeSession,
+    Node,
+    remote::{
+        RemoteMessageHandler,
+        Provider,
+        RegisterHandler,
+        RemoteMessage,
+    },
+};
 use crate::utils::generate_node_id;
 use crate::raft::{MemRaft, RaftNode};
 
@@ -24,6 +38,8 @@ pub struct Network {
     listener: Option<Addr<Listener>>,
     state: NetworkState,
     pub metrics: BTreeMap<NodeId, RaftMetrics>,
+    handlers: HashMap<&'static str, Arc<RemoteMessageHandler>>,
+    sessions: HashMap<NodeId, Addr<NodeSession>>
 }
 
 impl Network {
@@ -38,24 +54,26 @@ impl Network {
             nodes_connected: Vec::new(),
             state: NetworkState::Initialized,
             metrics: BTreeMap::new(),
+            handlers: HashMap::new(),
+            sessions: HashMap::new(),
         }
     }
 
-    // set peers
+    /// set peers
     pub fn peers(&mut self, peers: Vec<&str>) {
         for peer in peers.iter() {
             self.peers.push(peer.to_string());
         }
     }
 
-    // register a new node to the network
+    /// register a new node to the network
     pub fn register_node(&mut self, peer_addr: &str, network: Addr<Network>) {
         let id = generate_node_id(peer_addr);
         let node = Node::new(id, peer_addr.to_owned());
         self.nodes.insert(id, node);
     }
 
-    // get a node from the network by its id
+    /// get a node from the network by its id
     pub fn get_node(&mut self, id: NodeId) -> Option<&Addr<Node>> {
         self.nodes.get(&id)
     }
@@ -102,7 +120,11 @@ impl Actor for Network {
 
                 act.raft = Some(raft_node);
 
-
+                if let Some(ref mut raft_node) = act.raft {
+                    for session in act.sessions.values() {
+                        session.do_send(RaftCreated(raft_node.addr.clone()));
+                    }
+                }
             } else {
                 println!("Starting in single node mode");
                 act.state = NetworkState::SingleNode;
@@ -111,8 +133,8 @@ impl Actor for Network {
     }
 }
 
-#[derive(Message, Debug)]
-pub struct PeerConnected(pub NodeId);
+#[derive(Message)]
+pub struct PeerConnected(pub NodeId, pub Addr<NodeSession>);
 
 impl Handler<PeerConnected> for Network {
     type Result = ();
@@ -120,6 +142,7 @@ impl Handler<PeerConnected> for Network {
     fn handle(&mut self, msg: PeerConnected, ctx: &mut Context<Self>) {
         // println!("Registering node {}", msg.0);
         self.nodes_connected.push(msg.0);
+        self.sessions.insert(msg.0, msg.1);
     }
 }
 

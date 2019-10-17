@@ -3,11 +3,19 @@ use std::time::{Duration, Instant};
 use tokio::codec::FramedRead;
 use tokio::io::{AsyncRead, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
-use actix_raft::{NodeId};
+use actix_raft::{
+    NodeId,
+    messages,
+};
+use std::sync::Arc;
+use std::marker::PhantomData;
 use std::collections::HashMap;
 use serde::{Serialize, de::DeserializeOwned};
 
-use crate::raft::MemRaft;
+use crate::raft::{
+    MemRaft,
+    storage
+};
 use crate::network::{
     Network,
     NodeCodec,
@@ -16,15 +24,15 @@ use crate::network::{
     PeerConnected,
     remote::{
         RemoteMessageHandler,
-        RegisterMessage,
+        RegisterHandler,
         RemoteMessage,
+        Provider,
     },
 };
 
 pub struct Listener {
     network: Addr<Network>,
     raft: Option<Addr<MemRaft>>,
-    handlers: HashMap<&'static str, Box<dyn RemoteMessageHandler>>,
 }
 
 impl Listener {
@@ -38,7 +46,6 @@ impl Listener {
             Listener {
                 network: network_addr,
                 raft: None,
-                handlers: HashMap::new(),
             }
         })
     }
@@ -46,15 +53,6 @@ impl Listener {
 
 impl Actor for Listener {
     type Context = Context<Self>;
-}
-
-impl Handler<RegisterMessage> for Listener
-{
-    type Result = ();
-
-    fn handle(&mut self, msg: RegisterMessage, ctx: &mut Context<Self>) {
-        self.handlers.insert(msg.type_id, msg.handler);
-    }
 }
 
 #[derive(Message)]
@@ -68,7 +66,6 @@ impl Handler<NodeConnect> for Listener {
         let (r, w) = msg.0.split();
 
         let network = self.network.clone();
-        let raft =
 
         NodeSession::create(move |ctx| {
             NodeSession::add_stream(FramedRead::new(r, NodeCodec), ctx);
@@ -80,7 +77,7 @@ impl Handler<NodeConnect> for Listener {
 #[derive(Message)]
 pub struct RaftCreated(pub Addr<MemRaft>);
 
-impl Handler<RaftCreated> for Listener {
+impl Handler<RaftCreated> for NodeSession {
     type Result = ();
 
     fn handle(&mut self, msg: RaftCreated, ctx: &mut Context<Self>) {
@@ -89,11 +86,13 @@ impl Handler<RaftCreated> for Listener {
 }
 
 // NodeSession
-struct NodeSession {
+pub struct NodeSession {
     hb: Instant,
     network: Addr<Network>,
     framed: actix::io::FramedWrite<WriteHalf<TcpStream>, NodeCodec>,
     id: Option<NodeId>,
+    handlers: HashMap<&'static str, Arc<dyn RemoteMessageHandler>>,
+    raft: Option<Addr<MemRaft>>,
 }
 
 impl NodeSession {
@@ -106,6 +105,8 @@ impl NodeSession {
             framed: framed,
             network,
             id: None,
+            handlers: HashMap::new(),
+            raft: None,
         }
     }
 
@@ -141,10 +142,45 @@ impl StreamHandler<NodeRequest, std::io::Error> for NodeSession {
             },
             NodeRequest::Join(id) => {
                 self.id = Some(id);
-                self.network.do_send(PeerConnected(id));
+                self.network.do_send(PeerConnected(id, ctx.address()));
             },
-            NodeRequest::Message(mid, type_id, message) => {
-                // TODO: find a way to deserialize message > send to raft > send result to client
+            NodeRequest::Message(mid, type_id, body) => {
+                match type_id.as_str() {
+                    "AppendEntriesRequest" => {
+                        let raft_msg = serde_json::from_slice::<messages::AppendEntriesRequest<storage::MemoryStorageData>>(body.as_ref()).unwrap();
+                        if let Some(ref mut raft) = self.raft {
+                            raft.send(raft_msg).and_then(move |res| {
+                                let res = res.unwrap();
+                                let res_payload = serde_json::to_string::<messages::AppendEntriesResponse>(&res).unwrap();
+                                self.framed.write(NodeResponse::Result(mid, res_payload));
+                                futures::future::ok(())
+                            });
+                        }
+                    },
+                    "VoteRequest" => {
+                        let raft_msg = serde_json::from_slice::<messages::VoteRequest>(body.as_ref()).unwrap();
+                        if let Some(ref mut raft) = self.raft {
+                            raft.send(raft_msg).and_then(move |res| {
+                                let res = res.unwrap();
+                                let res_payload = serde_json::to_string::<messages::VoteResponse>(&res).unwrap();
+                                self.framed.write(NodeResponse::Result(mid, res_payload));
+                                futures::future::ok(())
+                            });
+                        }
+                    },
+                    "InstallSnapshotRequest" => {
+                        let raft_msg = serde_json::from_slice::<messages::InstallSnapshotRequest>(body.as_ref()).unwrap();
+                        if let Some(ref mut raft) = self.raft {
+                            raft.send(raft_msg).and_then(move |res| {
+                                let res = res.unwrap();
+                                let res_payload = serde_json::to_string::<messages::InstallSnapshotResponse>(&res).unwrap();
+                                self.framed.write(NodeResponse::Result(mid, res_payload));
+                                futures::future::ok(())
+                            });
+                        }
+                    },
+                    _ => ()
+                };
             },
             _ => ()
         }

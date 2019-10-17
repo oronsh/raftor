@@ -6,5 +6,5 @@ pub mod remote;
 
 pub use self::network::{Network, PeerConnected};
 pub use self::node::{Node};
-pub use self::listener::Listener;
+pub use self::listener::{Listener, NodeSession, RaftCreated};
 pub use self::codec::{NodeCodec, ClientNodeCodec, NodeRequest, NodeResponse};

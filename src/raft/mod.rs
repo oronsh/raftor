@@ -9,11 +9,11 @@ use actix_raft::{
 
 use tempfile::{tempdir_in, TempDir};
 use std::time::{Duration};
+use serde::{Serialize, de::DeserializeOwned};
+use crate::network::{Network, remote::{RemoteMessage}};
 
-use crate::network::{Network};
-
-mod network;
-mod storage;
+pub mod network;
+pub mod storage;
 
 use self::storage::{MemoryStorageData, MemoryStorageError, MemoryStorage};
 
@@ -21,7 +21,7 @@ pub type MemRaft = Raft<MemoryStorageData, MemoryStorageError, Network, MemorySt
 
 pub struct RaftNode {
     id: NodeId,
-    addr: Addr<MemRaft>,
+    pub addr: Addr<MemRaft>,
     members: Vec<NodeId>,
     network: Addr<Network>,
 }
