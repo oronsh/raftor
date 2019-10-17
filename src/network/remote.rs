@@ -36,6 +36,7 @@ where
             self.rx
                 .map_err(|e| ())
                 .and_then(move |msg| {
+                    println!("About to parse msg {:?}", msg);
                     let msg = serde_json::from_slice::<M::Result>(msg.as_ref()).unwrap();
                     if let Some(tx) = tx {
                         let _ = tx.send(msg);

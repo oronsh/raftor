@@ -1,4 +1,4 @@
-use actix_raft::{NodeId, RaftMetrics};
+use actix_raft::{NodeId, RaftMetrics, admin::{InitWithConfig}};
 use std::time::Duration;
 use actix::prelude::*;
 use std::marker::PhantomData;
@@ -69,7 +69,7 @@ impl Network {
     /// register a new node to the network
     pub fn register_node(&mut self, peer_addr: &str, network: Addr<Network>) {
         let id = generate_node_id(peer_addr);
-        let node = Node::new(id, peer_addr.to_owned());
+        let node = Node::new(id, self.id, peer_addr.to_owned());
         self.nodes.insert(id, node);
     }
 
@@ -107,7 +107,7 @@ impl Actor for Network {
             }
         }
 
-        ctx.run_later(Duration::new(10, 0), |act, ctx| {
+        ctx.run_later(Duration::new(5, 0), |act, ctx| {
             let num_nodes = act.nodes_connected.len();
 
             if num_nodes > 1 {
@@ -124,7 +124,20 @@ impl Actor for Network {
                     for session in act.sessions.values() {
                         session.do_send(RaftCreated(raft_node.addr.clone()));
                     }
+
+                    println!("{:?}", act.nodes_connected.clone());
+
+                    let init_msg = InitWithConfig::new(act.nodes_connected.clone());
+                    Arbiter::spawn(raft_node.addr.send(init_msg)
+                                   .map_err(|_| ())
+                                   .and_then(|_| {
+                        println!("Raft node init!");
+                        futures::future::ok(())
+                    }));
+
                 }
+
+
             } else {
                 println!("Starting in single node mode");
                 act.state = NetworkState::SingleNode;
@@ -153,11 +166,11 @@ impl Handler<RaftMetrics> for Network {
     type Result = ();
 
     fn handle(&mut self, msg: RaftMetrics, _: &mut Context<Self>) -> Self::Result {
-        debug!("Metrics: node={} state={:?} leader={:?} term={} index={} applied={} cfg={{join={} members={:?} non_voters={:?} removing={:?}}}",
+/*        println!("Metrics: node={} state={:?} leader={:?} term={} index={} applied={} cfg={{join={} members={:?} non_voters={:?} removing={:?}}}",
             msg.id, msg.state, msg.current_leader, msg.current_term, msg.last_log_index, msg.last_applied,
             msg.membership_config.is_in_joint_consensus, msg.membership_config.members,
             msg.membership_config.non_voters, msg.membership_config.removing,
-        );
+        );*/
         self.metrics.insert(msg.id, msg);
     }
 }

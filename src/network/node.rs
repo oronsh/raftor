@@ -36,6 +36,7 @@ enum NodeState {
 
 pub struct Node {
     id: NodeId,
+    local_id: NodeId,
     mid: u64,
     state: NodeState,
     peer_addr: String,
@@ -44,10 +45,11 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn new(id: u64, peer_addr: String) -> Addr<Self> {
+    pub fn new(id: u64, local_id: NodeId, peer_addr: String) -> Addr<Self> {
         Node::create(move |_ctx| {
             Node {
                 id: id,
+                local_id: local_id,
                 mid: 0,
                 state: NodeState::Registered,
                 peer_addr: peer_addr,
@@ -113,7 +115,7 @@ impl Handler<TcpConnect> for Node {
         Node::add_stream(FramedRead::new(r, ClientNodeCodec), ctx);
         self.framed = Some(actix::io::FramedWrite::new(w, ClientNodeCodec, ctx));
 
-        self.framed.as_mut().unwrap().write(NodeRequest::Join(self.id));
+        self.framed.as_mut().unwrap().write(NodeRequest::Join(self.local_id));
         self.hb(ctx);
     }
 }
@@ -162,7 +164,7 @@ impl StreamHandler<NodeResponse, std::io::Error> for Node {
                 }
             },
             NodeResponse::Ping => {
-                println!("Client got Ping from {}", self.id);
+                // println!("Client got Ping from {}", self.id);
               },
             _ => ()
         }

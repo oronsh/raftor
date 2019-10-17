@@ -133,54 +133,98 @@ impl Actor for NodeSession {
 
 impl actix::io::WriteHandler<std::io::Error> for NodeSession {}
 
+
+struct SendToRaft(String, String);
+
+impl Message for SendToRaft
+{
+    type Result = Result<String, ()>;
+}
+
+impl Handler<SendToRaft> for NodeSession
+{
+    type Result = Response<String, ()>;
+
+    fn handle(&mut self, msg: SendToRaft, ctx: &mut Context<Self>) -> Self::Result {
+        let type_id = msg.0;
+        let body = msg.1;
+
+        let res = match type_id.as_str() {
+            "AppendEntriesRequest" => {
+                let raft_msg = serde_json::from_slice::<messages::AppendEntriesRequest<storage::MemoryStorageData>>(body.as_ref()).unwrap();
+                if let Some(ref mut raft) = self.raft {
+                    let future = raft.send(raft_msg)
+                        .map_err(|_| ())
+                        .and_then(|res| {
+                            let res = res.unwrap();
+                            let res_payload = serde_json::to_string::<messages::AppendEntriesResponse>(&res).unwrap();
+                            futures::future::ok(res_payload)
+                        });
+
+                    Response::fut(future)
+                }  else {
+                    Response::reply(Ok("".to_owned()))
+                }
+            },
+            "VoteRequest" => {
+                let raft_msg = serde_json::from_slice::<messages::VoteRequest>(body.as_ref()).unwrap();
+                if let Some(ref mut raft) = self.raft {
+                    let future = raft.send(raft_msg)
+                        .map_err(|_| ())
+                        .and_then(|res| {
+                            let res = res.unwrap();
+                            let res_payload = serde_json::to_string::<messages::VoteResponse>(&res).unwrap();
+                            futures::future::ok(res_payload)
+                        });
+                    Response::fut(future)
+                }  else {
+                    Response::reply(Ok("".to_owned()))
+                }
+            },
+            "InstallSnapshotRequest" => {
+                let raft_msg = serde_json::from_slice::<messages::InstallSnapshotRequest>(body.as_ref()).unwrap();
+                if let Some(ref mut raft) = self.raft {
+                    let future = raft.send(raft_msg)
+                        .map_err(|_| ())
+                        .and_then(|res| {
+                            let res = res.unwrap();
+                            let res_payload = serde_json::to_string::<messages::InstallSnapshotResponse>(&res).unwrap();
+                            futures::future::ok(res_payload)
+                        });
+                    Response::fut(future)
+                } else {
+                    Response::reply(Ok("".to_owned()))
+                }
+            },
+            _ => {
+                Response::reply(Ok("".to_owned()))
+            }
+        };
+
+        res
+    }
+}
+
 impl StreamHandler<NodeRequest, std::io::Error> for NodeSession {
     fn handle(&mut self, msg: NodeRequest, ctx: &mut Context<Self>) {
         match msg {
             NodeRequest::Ping => {
                 self.hb = Instant::now();
-                println!("Server got ping from {}", self.id.unwrap());
+                // println!("Server got ping from {}", self.id.unwrap());
             },
             NodeRequest::Join(id) => {
                 self.id = Some(id);
                 self.network.do_send(PeerConnected(id, ctx.address()));
             },
             NodeRequest::Message(mid, type_id, body) => {
-                match type_id.as_str() {
-                    "AppendEntriesRequest" => {
-                        let raft_msg = serde_json::from_slice::<messages::AppendEntriesRequest<storage::MemoryStorageData>>(body.as_ref()).unwrap();
-                        if let Some(ref mut raft) = self.raft {
-                            raft.send(raft_msg).and_then(move |res| {
-                                let res = res.unwrap();
-                                let res_payload = serde_json::to_string::<messages::AppendEntriesResponse>(&res).unwrap();
-                                self.framed.write(NodeResponse::Result(mid, res_payload));
-                                futures::future::ok(())
-                            });
-                        }
-                    },
-                    "VoteRequest" => {
-                        let raft_msg = serde_json::from_slice::<messages::VoteRequest>(body.as_ref()).unwrap();
-                        if let Some(ref mut raft) = self.raft {
-                            raft.send(raft_msg).and_then(move |res| {
-                                let res = res.unwrap();
-                                let res_payload = serde_json::to_string::<messages::VoteResponse>(&res).unwrap();
-                                self.framed.write(NodeResponse::Result(mid, res_payload));
-                                futures::future::ok(())
-                            });
-                        }
-                    },
-                    "InstallSnapshotRequest" => {
-                        let raft_msg = serde_json::from_slice::<messages::InstallSnapshotRequest>(body.as_ref()).unwrap();
-                        if let Some(ref mut raft) = self.raft {
-                            raft.send(raft_msg).and_then(move |res| {
-                                let res = res.unwrap();
-                                let res_payload = serde_json::to_string::<messages::InstallSnapshotResponse>(&res).unwrap();
-                                self.framed.write(NodeResponse::Result(mid, res_payload));
-                                futures::future::ok(())
-                            });
-                        }
-                    },
-                    _ => ()
-                };
+                let task = actix::fut::wrap_future(ctx.address().send(SendToRaft(type_id, body)))
+                    .map_err(|err, _: &mut NodeSession, _| ())
+                    .and_then(move |res, act, _| {
+                        let payload = res.unwrap();
+                        act.framed.write(NodeResponse::Result(mid, payload));
+                        actix::fut::result(Ok(()))
+                    });
+                ctx.spawn(task);
             },
             _ => ()
         }
