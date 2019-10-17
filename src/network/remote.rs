@@ -36,7 +36,10 @@ where
             self.rx
                 .map_err(|e| ())
                 .and_then(move |msg| {
-                    println!("About to parse msg {:?}", msg);
+                    if msg == "" {
+                        return Err(());
+                    }
+
                     let msg = serde_json::from_slice::<M::Result>(msg.as_ref()).unwrap();
                     if let Some(tx) = tx {
                         let _ = tx.send(msg);
@@ -101,7 +104,7 @@ pub struct RegisterHandler(pub Addr<MemRaft>);
 
 /// Impl RemoteMessage for RaftNetwork messages
 impl<D: AppData> RemoteMessage for messages::AppendEntriesRequest<D> {
-    fn type_id() -> &'static str { "AppendEntriesrequest" }
+    fn type_id() -> &'static str { "AppendEntriesRequest" }
 }
 
 impl RemoteMessage for messages::VoteRequest {

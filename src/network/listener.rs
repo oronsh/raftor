@@ -151,7 +151,6 @@ impl StreamHandler<NodeRequest, std::io::Error> for NodeSession {
                     .map_err(|err, _: &mut NodeSession, _| ())
                     .and_then(move |res, act, _| {
                         let payload = res.unwrap();
-                        println!("json: {:?}", payload);
                         act.framed.write(NodeResponse::Result(mid, payload));
                         actix::fut::result(Ok(()))
                     });

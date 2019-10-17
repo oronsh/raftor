@@ -24,7 +24,7 @@ impl Handler<messages::AppendEntriesRequest<Data>> for Network {
         let req = node.send(SendRaftMessage(msg));
 
         Box::new(fut::wrap_future(req)
-            .map_err(|_, _, _| panic!(ERR_ROUTING_FAILURE))
+            .map_err(|_, _, _| ())
             .and_then(|res, _, _| fut::result(res)))
     }
 }
@@ -33,14 +33,12 @@ impl Handler<messages::VoteRequest> for Network {
     type Result = ResponseActFuture<Self, messages::VoteResponse, ()>;
 
     fn handle(&mut self, msg: messages::VoteRequest, ctx: &mut Context<Self>) -> Self::Result {
-        println!("Sending vote request to {}", msg.target);
         let node = self.get_node(msg.target).unwrap();
         let req = node.send(SendRaftMessage(msg));
 
         Box::new(fut::wrap_future(req)
-            .map_err(|_, _, _| panic!(ERR_ROUTING_FAILURE))
+            .map_err(|_, _, _| ())
                  .and_then(|res, _, _| {
-                     println!("Got VoteResponse {:?}", res);
                      fut::result(res)
                  }))
     }
@@ -54,7 +52,7 @@ impl Handler<messages::InstallSnapshotRequest> for Network {
         let req = node.send(SendRaftMessage(msg));
 
         Box::new(fut::wrap_future(req)
-            .map_err(|_, _, _| panic!(ERR_ROUTING_FAILURE))
+            .map_err(|_, _, _| ())
             .and_then(|res, _, _| fut::result(res)))
     }
 }

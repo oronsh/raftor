@@ -120,26 +120,22 @@ impl Actor for Network {
 
                 act.raft = Some(raft_node);
 
-
-                ctx.run_later(Duration::new(5, 0), |act, ctx| {
-                    if let Some(ref mut raft_node) = act.raft {
-                        for session in act.sessions.values() {
-                            //                        session.send(RaftCreated(raft_node.addr.clone()));
-                        }
-
-                        println!("{:?}", act.nodes_connected.clone());
-
-                        let init_msg = InitWithConfig::new(act.nodes_connected.clone());
-
-                        Arbiter::spawn(raft_node.addr.send(init_msg)
-                                       .map_err(|_| ())
-                                       .and_then(|_| {
-                                           println!("Raft node init!");
-                                           futures::future::ok(())
-                                       }));
-
+                if let Some(ref mut raft_node) = act.raft {
+                    for session in act.sessions.values() {
+//                        session.send(RaftCreated(raft_node.addr.clone()));
                     }
-                });
+
+                    println!("{:?}", act.nodes_connected.clone());
+
+                    let init_msg = InitWithConfig::new(act.nodes_connected.clone());
+                    Arbiter::spawn(raft_node.addr.send(init_msg)
+                                   .map_err(|_| ())
+                                   .and_then(|_| {
+                        println!("Raft node init!");
+                        futures::future::ok(())
+                    }));
+
+                }
 
 
             } else {
@@ -183,19 +179,16 @@ impl Handler<SendToRaft> for Network
             },
             "VoteRequest" => {
                 let raft_msg = serde_json::from_slice::<messages::VoteRequest>(body.as_ref()).unwrap();
-                println!("1");
                 if let Some(ref mut raft) = self.raft {
-                    println!("2");
                     let future = raft.addr.send(raft_msg)
                         .map_err(|_| ())
                         .and_then(|res| {
-                            println!("3");
                             let res_payload = serde_json::to_string(&res).unwrap();
+                            // println!("{:?}", res_payload);
                             futures::future::ok(res_payload)
                         });
                     Response::fut(future)
                 }  else {
-                    println!("4");
                     Response::reply(Ok("".to_owned()))
                 }
             },
@@ -243,11 +236,11 @@ impl Handler<RaftMetrics> for Network {
     type Result = ();
 
     fn handle(&mut self, msg: RaftMetrics, _: &mut Context<Self>) -> Self::Result {
-/*        println!("Metrics: node={} state={:?} leader={:?} term={} index={} applied={} cfg={{join={} members={:?} non_voters={:?} removing={:?}}}",
+        println!("Metrics: node={} state={:?} leader={:?} term={} index={} applied={} cfg={{join={} members={:?} non_voters={:?} removing={:?}}}",
             msg.id, msg.state, msg.current_leader, msg.current_term, msg.last_log_index, msg.last_applied,
             msg.membership_config.is_in_joint_consensus, msg.membership_config.members,
             msg.membership_config.non_voters, msg.membership_config.removing,
-        );*/
+        );
         self.metrics.insert(msg.id, msg);
     }
 }
