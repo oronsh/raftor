@@ -1,4 +1,4 @@
-use actix_raft::{NodeId, RaftMetrics, admin::{InitWithConfig}};
+use actix_raft::{NodeId, RaftMetrics, admin::{InitWithConfig}, messages};
 use std::time::Duration;
 use actix::prelude::*;
 use std::marker::PhantomData;
@@ -20,7 +20,7 @@ use crate::network::{
     },
 };
 use crate::utils::generate_node_id;
-use crate::raft::{MemRaft, RaftNode};
+use crate::raft::{MemRaft, RaftNode, storage};
 
 pub enum NetworkState {
     Initialized,
@@ -120,22 +120,26 @@ impl Actor for Network {
 
                 act.raft = Some(raft_node);
 
-                if let Some(ref mut raft_node) = act.raft {
-                    for session in act.sessions.values() {
-                        session.do_send(RaftCreated(raft_node.addr.clone()));
+
+                ctx.run_later(Duration::new(5, 0), |act, ctx| {
+                    if let Some(ref mut raft_node) = act.raft {
+                        for session in act.sessions.values() {
+                            //                        session.send(RaftCreated(raft_node.addr.clone()));
+                        }
+
+                        println!("{:?}", act.nodes_connected.clone());
+
+                        let init_msg = InitWithConfig::new(act.nodes_connected.clone());
+
+                        Arbiter::spawn(raft_node.addr.send(init_msg)
+                                       .map_err(|_| ())
+                                       .and_then(|_| {
+                                           println!("Raft node init!");
+                                           futures::future::ok(())
+                                       }));
+
                     }
-
-                    println!("{:?}", act.nodes_connected.clone());
-
-                    let init_msg = InitWithConfig::new(act.nodes_connected.clone());
-                    Arbiter::spawn(raft_node.addr.send(init_msg)
-                                   .map_err(|_| ())
-                                   .and_then(|_| {
-                        println!("Raft node init!");
-                        futures::future::ok(())
-                    }));
-
-                }
+                });
 
 
             } else {
@@ -145,6 +149,79 @@ impl Actor for Network {
         });
     }
 }
+
+pub struct SendToRaft(pub String, pub String);
+
+impl Message for SendToRaft
+{
+    type Result = Result<String, ()>;
+}
+
+impl Handler<SendToRaft> for Network
+{
+    type Result = Response<String, ()>;
+
+    fn handle(&mut self, msg: SendToRaft, ctx: &mut Context<Self>) -> Self::Result {
+        let type_id = msg.0;
+        let body = msg.1;
+
+        let res = match type_id.as_str() {
+            "AppendEntriesRequest" => {
+                let raft_msg = serde_json::from_slice::<messages::AppendEntriesRequest<storage::MemoryStorageData>>(body.as_ref()).unwrap();
+                if let Some(ref mut raft) = self.raft {
+                    let future = raft.addr.send(raft_msg)
+                        .map_err(|_| ())
+                        .and_then(|res| {
+                            let res_payload = serde_json::to_string(&res).unwrap();
+                            futures::future::ok(res_payload)
+                        });
+
+                    Response::fut(future)
+                }  else {
+                    Response::reply(Ok("".to_owned()))
+                }
+            },
+            "VoteRequest" => {
+                let raft_msg = serde_json::from_slice::<messages::VoteRequest>(body.as_ref()).unwrap();
+                println!("1");
+                if let Some(ref mut raft) = self.raft {
+                    println!("2");
+                    let future = raft.addr.send(raft_msg)
+                        .map_err(|_| ())
+                        .and_then(|res| {
+                            println!("3");
+                            let res_payload = serde_json::to_string(&res).unwrap();
+                            futures::future::ok(res_payload)
+                        });
+                    Response::fut(future)
+                }  else {
+                    println!("4");
+                    Response::reply(Ok("".to_owned()))
+                }
+            },
+            "InstallSnapshotRequest" => {
+                let raft_msg = serde_json::from_slice::<messages::InstallSnapshotRequest>(body.as_ref()).unwrap();
+                if let Some(ref mut raft) = self.raft {
+                    let future = raft.addr.send(raft_msg)
+                        .map_err(|_| ())
+                        .and_then(|res| {
+                            let res_payload = serde_json::to_string(&res).unwrap();
+                            futures::future::ok(res_payload)
+                        });
+                    Response::fut(future)
+                } else {
+                    Response::reply(Ok("".to_owned()))
+                }
+            },
+            _ => {
+                Response::reply(Ok("".to_owned()))
+            }
+        };
+
+        res
+    }
+}
+
 
 #[derive(Message)]
 pub struct PeerConnected(pub NodeId, pub Addr<NodeSession>);
