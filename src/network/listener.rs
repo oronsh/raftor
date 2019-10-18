@@ -3,19 +3,9 @@ use std::time::{Duration, Instant};
 use tokio::codec::FramedRead;
 use tokio::io::{AsyncRead, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
-use actix_raft::{
-    NodeId,
-    messages,
-};
-use std::sync::Arc;
-use std::marker::PhantomData;
-use std::collections::HashMap;
-use serde::{Serialize, de::DeserializeOwned};
+use actix_raft::{NodeId};
+use log::{error};
 
-use crate::raft::{
-    MemRaft,
-    storage
-};
 use crate::network::{
     Network,
     NodeCodec,
@@ -23,17 +13,10 @@ use crate::network::{
     NodeResponse,
     PeerConnected,
     SendToRaft,
-    remote::{
-        RemoteMessageHandler,
-        RegisterHandler,
-        RemoteMessage,
-        Provider,
-    },
 };
 
 pub struct Listener {
     network: Addr<Network>,
-    raft: Option<Addr<MemRaft>>,
 }
 
 impl Listener {
@@ -46,7 +29,6 @@ impl Listener {
 
             Listener {
                 network: network_addr,
-                raft: None,
             }
         })
     }
@@ -63,9 +45,7 @@ impl Handler<NodeConnect> for Listener {
     type Result = ();
 
     fn handle(&mut self, msg: NodeConnect, _: &mut Context<Self>) {
-        let remote_addr = msg.0.peer_addr().unwrap();
         let (r, w) = msg.0.split();
-
         let network = self.network.clone();
 
         NodeSession::create(move |ctx| {
@@ -75,16 +55,6 @@ impl Handler<NodeConnect> for Listener {
     }
 }
 
-#[derive(Message)]
-pub struct RaftCreated(pub Addr<MemRaft>);
-
-impl Handler<RaftCreated> for NodeSession {
-    type Result = ();
-
-    fn handle(&mut self, msg: RaftCreated, ctx: &mut Context<Self>) {
-        self.raft = Some(msg.0);
-    }
-}
 
 // NodeSession
 pub struct NodeSession {
@@ -92,8 +62,6 @@ pub struct NodeSession {
     network: Addr<Network>,
     framed: actix::io::FramedWrite<WriteHalf<TcpStream>, NodeCodec>,
     id: Option<NodeId>,
-    handlers: HashMap<&'static str, Arc<dyn RemoteMessageHandler>>,
-    raft: Option<Addr<MemRaft>>,
 }
 
 impl NodeSession {
@@ -106,8 +74,6 @@ impl NodeSession {
             framed: framed,
             network,
             id: None,
-            handlers: HashMap::new(),
-            raft: None,
         }
     }
 
@@ -148,7 +114,9 @@ impl StreamHandler<NodeRequest, std::io::Error> for NodeSession {
             },
             NodeRequest::Message(mid, type_id, body) => {
                 let task = actix::fut::wrap_future(self.network.send(SendToRaft(type_id, body)))
-                    .map_err(|err, _: &mut NodeSession, _| ())
+                    .map_err(|err, _: &mut NodeSession, _| {
+                        error!("{:?}", err);
+                    })
                     .and_then(move |res, act, _| {
                         let payload = res.unwrap();
                         act.framed.write(NodeResponse::Result(mid, payload));
@@ -156,7 +124,6 @@ impl StreamHandler<NodeRequest, std::io::Error> for NodeSession {
                     });
                 ctx.spawn(task);
             },
-            _ => ()
         }
     }
 }

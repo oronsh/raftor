@@ -1,26 +1,17 @@
 use actix_raft::{NodeId, RaftMetrics, admin::{InitWithConfig}, messages};
 use std::time::Duration;
 use actix::prelude::*;
-use std::marker::PhantomData;
-use std::sync::Arc;
 use std::collections::{HashMap, BTreeMap};
-use serde::{Serialize, de::DeserializeOwned};
 use log::{debug};
 
 use crate::network::{
     Listener,
-    RaftCreated,
     NodeSession,
     Node,
-    remote::{
-        RemoteMessageHandler,
-        Provider,
-        RegisterHandler,
-        RemoteMessage,
-    },
+    MsgTypes,
 };
 use crate::utils::generate_node_id;
-use crate::raft::{MemRaft, RaftNode, storage};
+use crate::raft::{RaftNode, storage};
 
 pub enum NetworkState {
     Initialized,
@@ -38,8 +29,7 @@ pub struct Network {
     listener: Option<Addr<Listener>>,
     state: NetworkState,
     pub metrics: BTreeMap<NodeId, RaftMetrics>,
-    handlers: HashMap<&'static str, Arc<RemoteMessageHandler>>,
-    sessions: HashMap<NodeId, Addr<NodeSession>>
+    sessions: HashMap<NodeId, Addr<NodeSession>>,
 }
 
 impl Network {
@@ -54,7 +44,6 @@ impl Network {
             nodes_connected: Vec::new(),
             state: NetworkState::Initialized,
             metrics: BTreeMap::new(),
-            handlers: HashMap::new(),
             sessions: HashMap::new(),
         }
     }
@@ -67,7 +56,7 @@ impl Network {
     }
 
     /// register a new node to the network
-    pub fn register_node(&mut self, peer_addr: &str, network: Addr<Network>) {
+    pub fn register_node(&mut self, peer_addr: &str) {
         let id = generate_node_id(peer_addr);
         let node = Node::new(id, self.id, peer_addr.to_owned());
         self.nodes.insert(id, node);
@@ -82,10 +71,6 @@ impl Network {
         self.address = Some(address.to_owned());
         self.id = generate_node_id(address);
     }
-
-    pub fn discover_peers(&mut self) {
-        for node in self.nodes.iter() {}
-    }
 }
 
 impl Actor for Network {
@@ -98,16 +83,16 @@ impl Actor for Network {
         println!("Local node id: {}", self.id);
         let listener_addr = Listener::new(network_address.as_str(), ctx.address().clone());
         self.listener = Some(listener_addr);
-        self.nodes_connected.push(self.id); // push local id
-        // register nodes
+        self.nodes_connected.push(self.id);
+
         let peers = self.peers.clone();
         for peer in peers {
             if peer != *network_address {
-                self.register_node(peer.as_str(), ctx.address());
+                self.register_node(peer.as_str());
             }
         }
 
-        ctx.run_later(Duration::new(5, 0), |act, ctx| {
+        ctx.run_later(Duration::new(10, 0), |act, ctx| {
             let num_nodes = act.nodes_connected.len();
 
             if num_nodes > 1 {
@@ -121,11 +106,7 @@ impl Actor for Network {
                 act.raft = Some(raft_node);
 
                 if let Some(ref mut raft_node) = act.raft {
-                    for session in act.sessions.values() {
-//                        session.send(RaftCreated(raft_node.addr.clone()));
-                    }
-
-                    println!("{:?}", act.nodes_connected.clone());
+                    debug!("{:?}", act.nodes_connected.clone());
 
                     let init_msg = InitWithConfig::new(act.nodes_connected.clone());
                     Arbiter::spawn(raft_node.addr.send(init_msg)
@@ -146,7 +127,7 @@ impl Actor for Network {
     }
 }
 
-pub struct SendToRaft(pub String, pub String);
+pub struct SendToRaft(pub MsgTypes, pub String);
 
 impl Message for SendToRaft
 {
@@ -157,12 +138,12 @@ impl Handler<SendToRaft> for Network
 {
     type Result = Response<String, ()>;
 
-    fn handle(&mut self, msg: SendToRaft, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: SendToRaft, _ctx: &mut Context<Self>) -> Self::Result {
         let type_id = msg.0;
         let body = msg.1;
 
-        let res = match type_id.as_str() {
-            "AppendEntriesRequest" => {
+        let res = match type_id {
+            MsgTypes::AppendEntriesRequest => {
                 let raft_msg = serde_json::from_slice::<messages::AppendEntriesRequest<storage::MemoryStorageData>>(body.as_ref()).unwrap();
                 if let Some(ref mut raft) = self.raft {
                     let future = raft.addr.send(raft_msg)
@@ -177,7 +158,7 @@ impl Handler<SendToRaft> for Network
                     Response::reply(Ok("".to_owned()))
                 }
             },
-            "VoteRequest" => {
+            MsgTypes::VoteRequest => {
                 let raft_msg = serde_json::from_slice::<messages::VoteRequest>(body.as_ref()).unwrap();
                 if let Some(ref mut raft) = self.raft {
                     let future = raft.addr.send(raft_msg)
@@ -192,7 +173,7 @@ impl Handler<SendToRaft> for Network
                     Response::reply(Ok("".to_owned()))
                 }
             },
-            "InstallSnapshotRequest" => {
+            MsgTypes::InstallSnapshotRequest => {
                 let raft_msg = serde_json::from_slice::<messages::InstallSnapshotRequest>(body.as_ref()).unwrap();
                 if let Some(ref mut raft) = self.raft {
                     let future = raft.addr.send(raft_msg)
@@ -222,7 +203,7 @@ pub struct PeerConnected(pub NodeId, pub Addr<NodeSession>);
 impl Handler<PeerConnected> for Network {
     type Result = ();
 
-    fn handle(&mut self, msg: PeerConnected, ctx: &mut Context<Self>) {
+    fn handle(&mut self, msg: PeerConnected, _ctx: &mut Context<Self>) {
         // println!("Registering node {}", msg.0);
         self.nodes_connected.push(msg.0);
         self.sessions.insert(msg.0, msg.1);

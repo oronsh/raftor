@@ -7,10 +7,9 @@ use actix_raft::{
     config::{Config, SnapshotPolicy},
 };
 
-use tempfile::{tempdir_in, TempDir};
+use tempfile::{tempdir_in};
 use std::time::{Duration};
-use serde::{Serialize, de::DeserializeOwned};
-use crate::network::{Network, remote::{RemoteMessage}};
+use crate::network::{Network};
 
 pub mod network;
 pub mod storage;
@@ -30,7 +29,6 @@ impl RaftNode {
     pub fn new(id: NodeId, members: Vec<NodeId>, network: Addr<Network>) -> RaftNode {
         let id = id;
         let raft_members = members.clone();
-        let raft_network = network.clone();
         let metrics_rate = 1;
         let temp_dir = tempdir_in("/tmp").expect("Tempdir to be created without error.");
         let snapshot_dir = temp_dir.path().to_string_lossy().to_string();
@@ -41,7 +39,6 @@ impl RaftNode {
             .validate().expect("Raft config to be created without error.");
 
         let storage = MemoryStorage::create(|_| MemoryStorage::new(raft_members, snapshot_dir));
-        let storage_addr = storage.clone();
 
         let raft_network = network.clone();
         let addr = Raft::create(move |_| {

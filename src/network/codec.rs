@@ -2,29 +2,15 @@ use byteorder::{BigEndian, ByteOrder};
 use bytes::{BufMut, BytesMut};
 use tokio::codec::{Decoder, Encoder};
 use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
-use std::cell::RefCell;
-use std::rc::Rc;
 use serde_json as json;
-use std::fmt::Debug;
-use actix_raft::{
-    NodeId,
-    messages::{
-        AppendEntriesRequest,
-        AppendEntriesResponse,
-        InstallSnapshotRequest,
-        InstallSnapshotResponse,
-        VoteRequest,
-        VoteResponse,
-    }
-};
+use actix_raft::{NodeId};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum NodeRequest {
     Ping,
     Join(NodeId),
     /// Message(msg_id, type_id, payload)
-    Message(u64, String, String),
+    Message(u64, MsgTypes, String),
 }
 #[derive(Serialize, Deserialize, Debug)]
 pub enum NodeResponse {
@@ -33,6 +19,15 @@ pub enum NodeResponse {
     /// Result(msg_id, payload)
     Result(u64, String),
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum MsgTypes {
+    AppendEntriesRequest,
+    VoteRequest,
+    InstallSnapshotRequest,
+    ClientPayload,
+}
+
 pub struct NodeCodec;
 
 // Client -> Server transport

@@ -1,31 +1,24 @@
 use std::time::Duration;
-use std::net::SocketAddr;
 use std::collections::HashMap;
-use futures::future;
 use tokio::net::TcpStream;
 use tokio::io::{AsyncRead, WriteHalf};
 use tokio::codec::FramedRead;
 use actix::prelude::*;
 use actix_raft::{NodeId};
 use tokio::sync::oneshot;
-use actix::dev::{MessageResponse, ResponseChannel};
 use std::marker::PhantomData;
 
-use serde::{Serialize, Deserialize, de::DeserializeOwned};
+use serde::{Serialize, de::DeserializeOwned};
 
 use crate::network::{
-    Network,
     ClientNodeCodec,
     NodeRequest,
     NodeResponse,
-    PeerConnected,
-    Listener,
     remote::{
         RemoteMessage,
         RemoteMessageResult,
         SendRaftMessage,
-        Provider,
-    }
+    },
 };
 
 #[derive(PartialEq)]
@@ -126,7 +119,7 @@ where M: RemoteMessage + 'static,
 {
     type Result = RemoteMessageResult<M>;
 
-    fn handle(&mut self, msg: SendRaftMessage<M>, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: SendRaftMessage<M>, _ctx: &mut Context<Self>) -> Self::Result {
         let (tx, rx) = oneshot::channel::<String>();
 
         if let Some(ref mut framed) = self.framed {
@@ -134,7 +127,7 @@ where M: RemoteMessage + 'static,
             self.requests.insert(self.mid, tx);
 
             let body = serde_json::to_string::<M>(&msg.0).unwrap();
-            let request = NodeRequest::Message(self.mid, M::type_id().to_string(), body);
+            let request = NodeRequest::Message(self.mid, M::type_id(), body);
             framed.write(request);
         }
 
@@ -156,7 +149,7 @@ impl Handler<Connect> for Node {
 impl actix::io::WriteHandler<std::io::Error> for Node {}
 
 impl StreamHandler<NodeResponse, std::io::Error> for Node {
-    fn handle(&mut self, msg: NodeResponse, ctx: &mut Context<Self>) {
+    fn handle(&mut self, msg: NodeResponse, _ctx: &mut Context<Self>) {
         match msg {
             NodeResponse::Result(mid, data) => {
                 if let Some(tx) = self.requests.remove(&mid) {
