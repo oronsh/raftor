@@ -162,7 +162,6 @@ impl Handler<SendToRaft> for Network
                         .map_err(|_| ())
                         .and_then(|res| {
                             let res_payload = serde_json::to_string(&res).unwrap();
-                            // println!("{:?}", res_payload);
                             futures::future::ok(res_payload)
                         });
                     Response::fut(future)
