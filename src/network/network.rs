@@ -112,9 +112,9 @@ impl Actor for Network {
                     Arbiter::spawn(raft_node.addr.send(init_msg)
                                    .map_err(|_| ())
                                    .and_then(|_| {
-                        println!("Raft node init!");
-                        futures::future::ok(())
-                    }));
+                                       println!("Raft node init!");
+                                       futures::future::ok(())
+                                   }));
 
                 }
 
@@ -142,25 +142,22 @@ impl Handler<SendToRaft> for Network
         let type_id = msg.0;
         let body = msg.1;
 
-        let res = match type_id {
-            MsgTypes::AppendEntriesRequest => {
-                let raft_msg = serde_json::from_slice::<messages::AppendEntriesRequest<storage::MemoryStorageData>>(body.as_ref()).unwrap();
-                if let Some(ref mut raft) = self.raft {
+        let res = if let Some(ref mut raft) = self.raft {
+            match type_id {
+                MsgTypes::AppendEntriesRequest => {
+                    let raft_msg = serde_json::from_slice::<messages::AppendEntriesRequest<storage::MemoryStorageData>>(body.as_ref()).unwrap();
+
                     let future = raft.addr.send(raft_msg)
                         .map_err(|_| ())
                         .and_then(|res| {
                             let res_payload = serde_json::to_string(&res).unwrap();
                             futures::future::ok(res_payload)
                         });
-
                     Response::fut(future)
-                }  else {
-                    Response::reply(Ok("".to_owned()))
-                }
-            },
-            MsgTypes::VoteRequest => {
-                let raft_msg = serde_json::from_slice::<messages::VoteRequest>(body.as_ref()).unwrap();
-                if let Some(ref mut raft) = self.raft {
+                },
+                MsgTypes::VoteRequest => {
+                    let raft_msg = serde_json::from_slice::<messages::VoteRequest>(body.as_ref()).unwrap();
+
                     let future = raft.addr.send(raft_msg)
                         .map_err(|_| ())
                         .and_then(|res| {
@@ -169,13 +166,10 @@ impl Handler<SendToRaft> for Network
                             futures::future::ok(res_payload)
                         });
                     Response::fut(future)
-                }  else {
-                    Response::reply(Ok("".to_owned()))
-                }
-            },
-            MsgTypes::InstallSnapshotRequest => {
-                let raft_msg = serde_json::from_slice::<messages::InstallSnapshotRequest>(body.as_ref()).unwrap();
-                if let Some(ref mut raft) = self.raft {
+                },
+                MsgTypes::InstallSnapshotRequest => {
+                    let raft_msg = serde_json::from_slice::<messages::InstallSnapshotRequest>(body.as_ref()).unwrap();
+
                     let future = raft.addr.send(raft_msg)
                         .map_err(|_| ())
                         .and_then(|res| {
@@ -183,13 +177,11 @@ impl Handler<SendToRaft> for Network
                             futures::future::ok(res_payload)
                         });
                     Response::fut(future)
-                } else {
-                    Response::reply(Ok("".to_owned()))
-                }
-            },
-            _ => {
-                Response::reply(Ok("".to_owned()))
+                },
+                _ => Response::reply(Ok("".to_owned()))
             }
+        } else {
+            Response::reply(Ok("".to_owned()))
         };
 
         res
@@ -218,9 +210,9 @@ impl Handler<RaftMetrics> for Network {
 
     fn handle(&mut self, msg: RaftMetrics, _: &mut Context<Self>) -> Self::Result {
         println!("Metrics: node={} state={:?} leader={:?} term={} index={} applied={} cfg={{join={} members={:?} non_voters={:?} removing={:?}}}",
-            msg.id, msg.state, msg.current_leader, msg.current_term, msg.last_log_index, msg.last_applied,
-            msg.membership_config.is_in_joint_consensus, msg.membership_config.members,
-            msg.membership_config.non_voters, msg.membership_config.removing,
+                 msg.id, msg.state, msg.current_leader, msg.current_term, msg.last_log_index, msg.last_applied,
+                 msg.membership_config.is_in_joint_consensus, msg.membership_config.members,
+                 msg.membership_config.non_voters, msg.membership_config.removing,
         );
         self.metrics.insert(msg.id, msg);
     }
