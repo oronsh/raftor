@@ -7,6 +7,7 @@ use log::{error};
 use actix_raft::{
     AppData,
     AppError,
+    AppDataResponse,
     messages,
 };
 
@@ -77,6 +78,6 @@ impl RemoteMessage for messages::InstallSnapshotRequest {
     fn type_id() -> MsgTypes { MsgTypes::InstallSnapshotRequest }
 }
 
-impl<D: AppData, E: AppError> RemoteMessage for messages::ClientPayload<D, E> {
+impl<D: AppData, R: AppDataResponse, E: AppError> RemoteMessage for messages::ClientPayload<D, R, E> {
     fn type_id() -> MsgTypes { MsgTypes::ClientPayload }
 }

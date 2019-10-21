@@ -14,9 +14,9 @@ use crate::network::{Network};
 pub mod network;
 pub mod storage;
 
-use self::storage::{MemoryStorageData, MemoryStorageError, MemoryStorage};
+use self::storage::{MemoryStorageData, MemoryStorageError, MemoryStorage, MemoryStorageResponse};
 
-pub type MemRaft = Raft<MemoryStorageData, MemoryStorageError, Network, MemoryStorage>;
+pub type MemRaft = Raft<MemoryStorageData, MemoryStorageResponse, MemoryStorageError, Network, MemoryStorage>;
 
 pub struct RaftNode {
     id: NodeId,
