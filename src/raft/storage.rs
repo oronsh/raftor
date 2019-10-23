@@ -9,10 +9,11 @@ use actix::prelude::*;
 use log::{debug, error};
 use serde::{Serialize, Deserialize};
 use rmp_serde as rmps;
+use hash_ring::HashRing;
 
 use actix_raft::{
     AppData, AppDataResponse, AppError, NodeId,
-    messages::{Entry as RaftEntry, EntrySnapshotPointer, MembershipConfig},
+    messages::{Entry as RaftEntry, EntryPayload, EntrySnapshotPointer, MembershipConfig},
     storage::{
         AppendEntryToLog,
         ReplicateToLog,
@@ -35,9 +36,7 @@ type Entry = RaftEntry<MemoryStorageData>;
 
 /// The concrete data type used by the `MemoryStorage` system.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct MemoryStorageData {
-    pub data: Vec<u8>,
-}
+pub struct MemoryStorageData(pub NodeId);
 
 impl AppData for MemoryStorageData {}
 
@@ -76,6 +75,7 @@ pub struct MemoryStorage {
     snapshot_dir: String,
     state_machine: BTreeMap<u64, Entry>,
     snapshot_actor: Addr<SnapshotActor>,
+    nodes: HashRing<NodeId>,
 }
 
 impl MemoryStorage {
@@ -89,6 +89,7 @@ impl MemoryStorage {
             snapshot_data: None, snapshot_dir,
             state_machine: Default::default(),
             snapshot_actor: SyncArbiter::start(1, move || SnapshotActor(snapshot_dir_pathbuf.clone())),
+            nodes: HashRing::new(Vec::new(), 10),
         }
     }
 }
@@ -163,6 +164,14 @@ impl Handler<ApplyEntryToStateMachine<MemoryStorageData, MemoryStorageResponse, 
             error!("Critical error. State machine entires are not allowed to be overwritten. Entry: {:?}", old);
             Err(MemoryStorageError)
         } else {
+
+            if let EntryPayload::Normal(entry) = &msg.payload.payload {
+                let node_id = (*entry).data.0;
+                self.nodes.add_node(&node_id);
+            } else {
+
+            }
+
             Ok(MemoryStorageResponse)
         };
         Box::new(fut::result(res))
@@ -178,6 +187,14 @@ impl Handler<ReplicateToStateMachine<MemoryStorageData, MemoryStorageError>> for
                 error!("Critical error. State machine entires are not allowed to be overwritten. Entry: {:?}", old);
                 return Err(MemoryStorageError)
             }
+            if let EntryPayload::Normal(entry) = &e.payload {
+
+                let node_id = entry.data.0;
+                self.nodes.add_node(&node_id);
+            } else {
+
+            }
+
             Ok(())
         });
         Box::new(fut::result(res))
@@ -431,5 +448,24 @@ impl Handler<GetCurrentState> for MemoryStorage {
             snapshot_dir: self.snapshot_dir.clone(),
             state_machine: self.state_machine.clone(),
         })
+    }
+}
+
+pub struct GetNode(pub String);
+
+impl Message for GetNode {
+    type Result = Result<NodeId, ()>;
+}
+
+impl Handler<GetNode> for MemoryStorage {
+    type Result = Result<NodeId, ()>;
+
+    fn handle(&mut self, msg: GetNode, ctx: &mut Context<Self>) -> Self::Result {
+        if let Some(node_id) = self.nodes.get_node(msg.0) {
+            Ok(*node_id)
+        } else {
+            Err(())
+        }
+
     }
 }

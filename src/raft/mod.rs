@@ -5,6 +5,7 @@ use actix_raft::{
     NodeId,
     Raft,
     config::{Config, SnapshotPolicy},
+    RaftMetrics,
 };
 
 use tempfile::{tempdir_in};
@@ -23,6 +24,8 @@ pub struct RaftNode {
     pub addr: Addr<MemRaft>,
     members: Vec<NodeId>,
     network: Addr<Network>,
+    leader: Option<NodeId>,
+    storage: Addr<MemoryStorage>,
 }
 
 impl RaftNode {
@@ -41,8 +44,9 @@ impl RaftNode {
         let storage = MemoryStorage::create(|_| MemoryStorage::new(raft_members, snapshot_dir));
 
         let raft_network = network.clone();
+        let raft_storage = storage.clone();
         let addr = Raft::create(move |_| {
-            Raft::new(id, config, raft_network.clone(), storage.clone(), raft_network.recipient())
+            Raft::new(id, config, raft_network.clone(), raft_storage, raft_network.recipient())
         });
 
         RaftNode {
@@ -50,6 +54,15 @@ impl RaftNode {
             addr: addr,
             members: members,
             network: network,
+            leader: None,
+            storage: storage.clone(),
         }
+    }
+}
+
+
+impl RaftNode {
+    pub fn get_node(&mut self, node_id: &str) -> impl Future<Item = Result<NodeId, ()>, Error = actix::MailboxError> {
+         self.storage.send(storage::GetNode(node_id.to_string()))
     }
 }

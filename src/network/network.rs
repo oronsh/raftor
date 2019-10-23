@@ -1,17 +1,15 @@
-use actix_raft::{NodeId, RaftMetrics, admin::{InitWithConfig}, messages};
-use std::time::Duration;
 use actix::prelude::*;
-use std::collections::{HashMap, BTreeMap};
-use log::{debug};
+use actix_raft::{admin::InitWithConfig, messages, NodeId, RaftMetrics};
+use log::debug;
+use std::collections::{BTreeMap, HashMap};
+use std::time::{Duration, Instant};
+use tokio::timer::Delay;
 
-use crate::network::{
-    Listener,
-    NodeSession,
-    Node,
-    MsgTypes,
-};
+use crate::network::{Listener, MsgTypes, Node, NodeSession, remote::{SendRaftMessage}};
+use crate::raft::{storage, RaftNode};
 use crate::utils::generate_node_id;
-use crate::raft::{RaftNode, storage};
+
+pub type Payload = messages::ClientPayload<storage::MemoryStorageData, storage::MemoryStorageResponse, storage::MemoryStorageError>;
 
 pub enum NetworkState {
     Initialized,
@@ -28,7 +26,7 @@ pub struct Network {
     nodes_connected: Vec<NodeId>,
     listener: Option<Addr<Listener>>,
     state: NetworkState,
-    pub metrics: BTreeMap<NodeId, RaftMetrics>,
+    pub metrics: Option<RaftMetrics>,
     sessions: HashMap<NodeId, Addr<NodeSession>>,
 }
 
@@ -43,7 +41,7 @@ impl Network {
             listener: None,
             nodes_connected: Vec::new(),
             state: NetworkState::Initialized,
-            metrics: BTreeMap::new(),
+            metrics: None,
             sessions: HashMap::new(),
         }
     }
@@ -101,24 +99,37 @@ impl Actor for Network {
                 let network_addr = ctx.address();
                 let members = act.nodes_connected.clone();
                 let id = act.id;
-                let raft_node = RaftNode::new(id , members, network_addr);
+                let raft_node = RaftNode::new(id, members, network_addr);
 
                 act.raft = Some(raft_node);
 
-                if let Some(ref mut raft_node) = act.raft {
-                    debug!("{:?}", act.nodes_connected.clone());
+                debug!("{:?}", act.nodes_connected.clone());
 
-                    let init_msg = InitWithConfig::new(act.nodes_connected.clone());
-                    Arbiter::spawn(raft_node.addr.send(init_msg)
-                                   .map_err(|_| ())
-                                   .and_then(|_| {
-                                       println!("Raft node init!");
-                                       futures::future::ok(())
-                                   }));
-
-                }
-
-
+                ctx.spawn(
+                    actix::fut::wrap_future(ctx.address().send(InitRaft))
+                        .map_err(|_, _: &mut Network, _| ())
+                        .and_then(|_, _, _| {
+                            println!("Raft node init!");
+                            fut::wrap_future(Delay::new(
+                                Instant::now() + Duration::from_secs(5),
+                            )).map_err(|_, _, _| ())
+                        })
+                        .and_then(|_, act, ctx: &mut Context<Network>| {
+                            ctx.address().do_send(ClientRequest(act.id));
+                            fut::wrap_future(Delay::new(
+                                Instant::now() + Duration::from_secs(5),
+                            )).map_err(|_, _, _| ())
+                        })
+                        .and_then(|_, act, ctx| {
+                            let raft = act.raft.as_mut().unwrap();
+                            fut::wrap_future(raft.get_node("example_user_id"))
+                                .map_err(|_, _, _| ())
+                                .and_then(|node, _, _| {
+                                    println!("Hashed user to node: {}", node.unwrap());
+                                    fut::ok(())
+                                })
+                        })
+                );
             } else {
                 println!("Starting in single node mode");
                 act.state = NetworkState::SingleNode;
@@ -129,13 +140,11 @@ impl Actor for Network {
 
 pub struct SendToRaft(pub MsgTypes, pub String);
 
-impl Message for SendToRaft
-{
+impl Message for SendToRaft {
     type Result = Result<String, ()>;
 }
 
-impl Handler<SendToRaft> for Network
-{
+impl Handler<SendToRaft> for Network {
     type Result = Response<String, ()>;
 
     fn handle(&mut self, msg: SendToRaft, _ctx: &mut Context<Self>) -> Self::Result {
@@ -145,39 +154,50 @@ impl Handler<SendToRaft> for Network
         let res = if let Some(ref mut raft) = self.raft {
             match type_id {
                 MsgTypes::AppendEntriesRequest => {
-                    let raft_msg = serde_json::from_slice::<messages::AppendEntriesRequest<storage::MemoryStorageData>>(body.as_ref()).unwrap();
+                    let raft_msg = serde_json::from_slice::<
+                        messages::AppendEntriesRequest<storage::MemoryStorageData>,
+                    >(body.as_ref())
+                    .unwrap();
 
-                    let future = raft.addr.send(raft_msg)
-                        .map_err(|_| ())
-                        .and_then(|res| {
-                            let res_payload = serde_json::to_string(&res).unwrap();
-                            futures::future::ok(res_payload)
-                        });
+                    let future = raft.addr.send(raft_msg).map_err(|_| ()).and_then(|res| {
+                        let res_payload = serde_json::to_string(&res).unwrap();
+                        futures::future::ok(res_payload)
+                    });
                     Response::fut(future)
-                },
+                }
                 MsgTypes::VoteRequest => {
-                    let raft_msg = serde_json::from_slice::<messages::VoteRequest>(body.as_ref()).unwrap();
+                    let raft_msg =
+                        serde_json::from_slice::<messages::VoteRequest>(body.as_ref()).unwrap();
 
-                    let future = raft.addr.send(raft_msg)
-                        .map_err(|_| ())
-                        .and_then(|res| {
-                            let res_payload = serde_json::to_string(&res).unwrap();
-                            futures::future::ok(res_payload)
-                        });
+                    let future = raft.addr.send(raft_msg).map_err(|_| ()).and_then(|res| {
+                        let res_payload = serde_json::to_string(&res).unwrap();
+                        futures::future::ok(res_payload)
+                    });
                     Response::fut(future)
-                },
+                }
                 MsgTypes::InstallSnapshotRequest => {
-                    let raft_msg = serde_json::from_slice::<messages::InstallSnapshotRequest>(body.as_ref()).unwrap();
+                    let raft_msg =
+                        serde_json::from_slice::<messages::InstallSnapshotRequest>(body.as_ref())
+                            .unwrap();
 
-                    let future = raft.addr.send(raft_msg)
-                        .map_err(|_| ())
-                        .and_then(|res| {
-                            let res_payload = serde_json::to_string(&res).unwrap();
-                            futures::future::ok(res_payload)
-                        });
+                    let future = raft.addr.send(raft_msg).map_err(|_| ()).and_then(|res| {
+                        let res_payload = serde_json::to_string(&res).unwrap();
+                        futures::future::ok(res_payload)
+                    });
                     Response::fut(future)
                 },
-                _ => Response::reply(Ok("".to_owned()))
+                MsgTypes::ClientPayload => {
+                    let raft_msg =
+                        serde_json::from_slice::<messages::ClientPayload<storage::MemoryStorageData, storage::MemoryStorageResponse, storage::MemoryStorageError>>(body.as_ref())
+                            .unwrap();
+
+                    let future = raft.addr.send(raft_msg).map_err(|_| ()).and_then(|res| {
+                        let res_payload = serde_json::to_string(&res).unwrap();
+                        futures::future::ok(res_payload)
+                    });
+                    Response::fut(future)
+                },
+                _ => Response::reply(Ok("".to_owned())),
             }
         } else {
             Response::reply(Ok("".to_owned()))
@@ -186,7 +206,6 @@ impl Handler<SendToRaft> for Network
         res
     }
 }
-
 
 #[derive(Message)]
 pub struct PeerConnected(pub NodeId, pub Addr<NodeSession>);
@@ -201,6 +220,129 @@ impl Handler<PeerConnected> for Network {
     }
 }
 
+#[derive(Message)]
+pub struct InitRaft;
+
+impl Handler<InitRaft> for Network {
+    type Result = ();
+
+    fn handle(&mut self, msg: InitRaft, _ctx: &mut Context<Self>) {
+        let raft = self.raft.as_ref().unwrap();
+        let init_msg = InitWithConfig::new(self.nodes_connected.clone());
+        raft.addr.send(init_msg);
+    }
+}
+
+pub struct GetCurrentLeader;
+
+impl Message for GetCurrentLeader {
+    type Result = Result<NodeId, ()>;
+}
+
+impl Handler<GetCurrentLeader> for Network {
+    type Result = Result<NodeId, ()>;
+
+    fn handle(&mut self, msg: GetCurrentLeader, _ctx: &mut Context<Self>) -> Self::Result {
+        if let Some(ref mut metrics) = self.metrics {
+            if let Some(leader) = metrics.current_leader {
+                Ok(leader)
+            } else {
+                Err(())
+            }
+        } else {
+            Err(())
+        }
+    }
+}
+
+pub struct ClientRequest(NodeId);
+
+impl Message for ClientRequest {
+    type Result = ();
+}
+
+impl Handler<ClientRequest> for Network {
+    type Result = ();
+
+    fn handle(&mut self, msg: ClientRequest, ctx: &mut Context<Self>) {
+
+        let entry = messages::EntryNormal{data: storage::MemoryStorageData(msg.0)};
+        let payload = Payload::new(entry, messages::ResponseMode::Applied);
+
+        let req = fut::wrap_future(ctx.address().send(GetCurrentLeader))
+            .map_err(|_, _: &mut Network, _| ())
+            .and_then(move |res, act, ctx| {
+                let leader = res.unwrap();
+                println!("Found leader: {}", leader);
+                // if leader is current node send message here
+                if act.id == leader {
+                    let raft = act.raft.as_ref().unwrap();
+                    fut::Either::A(fut::wrap_future::<_, Self>(raft.addr.send(payload))
+                        .map_err(|_, _, _| ())
+                        .and_then(move |res, act, ctx| {
+                            match res {
+                                Ok(_) => {
+                                    fut::ok(())
+                                },
+                                Err(err) => match err {
+                                    messages::ClientError::Internal => {
+                                        debug!("TEST: resending client request.");
+                                        ctx.notify(msg);
+                                        fut::ok(())
+                                    }
+                                    messages::ClientError::Application(err) => {
+                                        panic!("Unexpected application error from client request: {:?}", err);
+                                    }
+                                    messages::ClientError::ForwardToLeader{leader, ..} => {
+                                        debug!("TEST: received ForwardToLeader error. Updating leader and forwarding.");
+                                        ctx.notify(msg);
+                                        fut::ok(())
+                                    }
+                                }
+                            }
+                        })
+                    )
+
+                } else {
+                    // send to remote raft
+                    let node = act.get_node(leader).unwrap();
+                    fut::Either::B(fut::wrap_future::<_, Self>(node.send(SendRaftMessage(payload)))
+                        .map_err(|_, _, _| ())
+                        .and_then(move |res, act, ctx| {
+                            match res {
+                                Ok(_) => {
+                                    fut::ok(())
+                                },
+                                Err(err) => match err {
+                                    messages::ClientError::Internal => {
+                                        debug!("TEST: resending client request.");
+                                        ctx.notify(msg);
+                                        fut::ok(())
+                                    }
+                                    messages::ClientError::Application(err) => {
+                                        panic!("Unexpected application error from client request: {:?}", err)
+                                    }
+                                    messages::ClientError::ForwardToLeader{leader, ..} => {
+                                        debug!("TEST: received ForwardToLeader error. Updating leader and forwarding.");
+                                        ctx.notify(msg);
+                                        fut::ok(())
+                                    }
+                                }
+                            }
+                        })
+                    )
+                }
+            });
+
+        ctx.spawn(req);
+        // TODO
+        // if self.leader == leader send ClientPayload request to local raft node
+        // else, send to remote leader node
+    }
+}
+
+
+
 //////////////////////////////////////////////////////////////////////////////
 // RaftMetrics ///////////////////////////////////////////////////////////////
 
@@ -208,11 +350,11 @@ impl Handler<RaftMetrics> for Network {
     type Result = ();
 
     fn handle(&mut self, msg: RaftMetrics, _: &mut Context<Self>) -> Self::Result {
-        println!("Metrics: node={} state={:?} leader={:?} term={} index={} applied={} cfg={{join={} members={:?} non_voters={:?} removing={:?}}}",
+        debug!("Metrics: node={} state={:?} leader={:?} term={} index={} applied={} cfg={{join={} members={:?} non_voters={:?} removing={:?}}}",
                  msg.id, msg.state, msg.current_leader, msg.current_term, msg.last_log_index, msg.last_applied,
                  msg.membership_config.is_in_joint_consensus, msg.membership_config.members,
                  msg.membership_config.non_voters, msg.membership_config.removing,
         );
-        self.metrics.insert(msg.id, msg);
+        self.metrics = Some(msg);
     }
 }

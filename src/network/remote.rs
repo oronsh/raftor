@@ -37,6 +37,7 @@ where
             self.rx
                 .map_err(|e| error!("{:?}", e))
                 .and_then(move |msg| {
+                    // Raft node has not been initialized yet
                     if msg == "" {
                         return Err(());
                     }
