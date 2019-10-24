@@ -54,9 +54,15 @@ impl Network {
     }
 
     /// register a new node to the network
-    pub fn register_node(&mut self, peer_addr: &str) {
+    pub fn register_node(&mut self, peer_addr: &str, addr: Addr<Self>) {
         let id = generate_node_id(peer_addr);
-        let node = Node::new(id, self.id, peer_addr.to_owned());
+        let local_id = self.id;
+        let peer_addr = peer_addr.to_owned();
+
+        let node = Supervisor::start(move |_| {
+            Node::new(id, local_id, peer_addr, addr)
+        });
+
         self.nodes.insert(id, node);
     }
 
@@ -86,7 +92,7 @@ impl Actor for Network {
         let peers = self.peers.clone();
         for peer in peers {
             if peer != *network_address {
-                self.register_node(peer.as_str());
+                self.register_node(peer.as_str(), ctx.address().clone());
             }
         }
 
@@ -116,18 +122,7 @@ impl Actor for Network {
                         })
                         .and_then(|_, act, ctx: &mut Context<Network>| {
                             ctx.address().do_send(ClientRequest(act.id));
-                            fut::wrap_future(Delay::new(
-                                Instant::now() + Duration::from_secs(5),
-                            )).map_err(|_, _, _| ())
-                        })
-                        .and_then(|_, act, ctx| {
-                            let raft = act.raft.as_mut().unwrap();
-                            fut::wrap_future(raft.get_node("example_user_id"))
-                                .map_err(|_, _, _| ())
-                                .and_then(|node, _, _| {
-                                    println!("Hashed user to node: {}", node.unwrap());
-                                    fut::ok(())
-                                })
+                            fut::ok(())
                         })
                 );
             } else {
@@ -135,6 +130,24 @@ impl Actor for Network {
                 act.state = NetworkState::SingleNode;
             }
         });
+    }
+}
+
+pub struct GetNode(pub String);
+
+impl Message for GetNode {
+    type Result = Result<NodeId, ()>;
+}
+
+impl Handler<GetNode> for Network {
+    type Result = Response<NodeId, ()>;
+
+    fn handle(&mut self, msg: GetNode, ctx: &mut Context<Self>) -> Self::Result {
+        let raft = self.raft.as_mut().unwrap();
+        Response::fut(raft.get_node(msg.0.as_str())
+                      .map_err(|_| ())
+                      .map(|res| res.unwrap())
+        )
     }
 }
 
@@ -208,7 +221,7 @@ impl Handler<SendToRaft> for Network {
 }
 
 #[derive(Message)]
-pub struct PeerConnected(pub NodeId, pub Addr<NodeSession>);
+pub struct PeerConnected(pub NodeId);
 
 impl Handler<PeerConnected> for Network {
     type Result = ();
@@ -216,7 +229,7 @@ impl Handler<PeerConnected> for Network {
     fn handle(&mut self, msg: PeerConnected, _ctx: &mut Context<Self>) {
         // println!("Registering node {}", msg.0);
         self.nodes_connected.push(msg.0);
-        self.sessions.insert(msg.0, msg.1);
+        // self.sessions.insert(msg.0, msg.1);
     }
 }
 
@@ -270,7 +283,7 @@ impl Handler<ClientRequest> for Network {
         let payload = Payload::new(entry, messages::ResponseMode::Applied);
 
         let req = fut::wrap_future(ctx.address().send(GetCurrentLeader))
-            .map_err(|_, _: &mut Network, _| ())
+            .map_err(|err, _: &mut Network, _| ())
             .and_then(move |res, act, ctx| {
                 let leader = res.unwrap();
                 println!("Found leader: {}", leader);
@@ -335,9 +348,6 @@ impl Handler<ClientRequest> for Network {
             });
 
         ctx.spawn(req);
-        // TODO
-        // if self.leader == leader send ClientPayload request to local raft node
-        // else, send to remote leader node
     }
 }
 
@@ -350,7 +360,7 @@ impl Handler<RaftMetrics> for Network {
     type Result = ();
 
     fn handle(&mut self, msg: RaftMetrics, _: &mut Context<Self>) -> Self::Result {
-        debug!("Metrics: node={} state={:?} leader={:?} term={} index={} applied={} cfg={{join={} members={:?} non_voters={:?} removing={:?}}}",
+        println!("Metrics: node={} state={:?} leader={:?} term={} index={} applied={} cfg={{join={} members={:?} non_voters={:?} removing={:?}}}",
                  msg.id, msg.state, msg.current_leader, msg.current_term, msg.last_log_index, msg.last_applied,
                  msg.membership_config.is_in_joint_consensus, msg.membership_config.members,
                  msg.membership_config.non_voters, msg.membership_config.removing,

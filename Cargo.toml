@@ -8,6 +8,9 @@ edition = "2018"
 
 [dependencies]
 actix = "0.8.3"
+actix-web = "1.0.8"
+actix-web-actors = "1.0.2"
+actix-files = "0.1.6"
 actix-raft = "0.4"
 tokio = "0.1"
 futures = "0.1"

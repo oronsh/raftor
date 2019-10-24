@@ -14,6 +14,8 @@ use crate::network::{
     ClientNodeCodec,
     NodeRequest,
     NodeResponse,
+    Network,
+    PeerConnected,
     remote::{
         RemoteMessage,
         RemoteMessageResult,
@@ -35,21 +37,21 @@ pub struct Node {
     peer_addr: String,
     framed: Option<actix::io::FramedWrite<WriteHalf<TcpStream>, ClientNodeCodec>>,
     requests: HashMap<u64, oneshot::Sender<String>>,
+    network: Addr<Network>,
 }
 
 impl Node {
-    pub fn new(id: u64, local_id: NodeId, peer_addr: String) -> Addr<Self> {
-        Node::create(move |_ctx| {
-            Node {
-                id: id,
-                local_id: local_id,
-                mid: 0,
-                state: NodeState::Registered,
-                peer_addr: peer_addr,
-                framed: None,
-                requests: HashMap::new(),
-            }
-        })
+    pub fn new(id: u64, local_id: NodeId, peer_addr: String, network: Addr<Network>) -> Self {
+        Node {
+            id: id,
+            local_id: local_id,
+            mid: 0,
+            state: NodeState::Registered,
+            peer_addr: peer_addr,
+            framed: None,
+            requests: HashMap::new(),
+            network: network,
+        }
     }
 
     fn connect(&mut self, ctx: &mut Context<Self>) {
@@ -86,9 +88,16 @@ impl Actor for Node {
         ctx.notify(Connect);
     }
 
-    fn stopped(&mut self, _: &mut Context<Self>) {
+    fn stopped(&mut self, ctx: &mut Context<Self>) {
         println!("Node #{} disconnected", self.id);
+        self.state = NodeState::Registered;
         // TODO: remove from network.nodes_connected
+    }
+}
+
+impl Supervised for Node {
+    fn restarting(&mut self, _ctx: &mut Context<Self>) {
+        self.framed.take();
     }
 }
 
@@ -108,6 +117,7 @@ impl Handler<TcpConnect> for Node {
         Node::add_stream(FramedRead::new(r, ClientNodeCodec), ctx);
         self.framed = Some(actix::io::FramedWrite::new(w, ClientNodeCodec, ctx));
 
+        self.network.do_send(PeerConnected(self.id));
         self.framed.as_mut().unwrap().write(NodeRequest::Join(self.local_id));
         self.hb(ctx);
     }

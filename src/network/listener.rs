@@ -110,7 +110,7 @@ impl StreamHandler<NodeRequest, std::io::Error> for NodeSession {
             },
             NodeRequest::Join(id) => {
                 self.id = Some(id);
-                self.network.do_send(PeerConnected(id, ctx.address()));
+                // self.network.do_send(PeerConnected(id));
             },
             NodeRequest::Message(mid, type_id, body) => {
                 let task = actix::fut::wrap_future(self.network.send(SendToRaft(type_id, body)))
