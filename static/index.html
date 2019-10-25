@@ -14,9 +14,10 @@
          control.html(control.html() + msg + '<br/>');
          control.scrollTop(control.scrollTop() + 1000);
        }
-       function connect(uid, node_id) {
+       function connect(uid, url) {
          disconnect();
-         var wsUri = (window.location.protocol=='https:'&&'wss://'||'ws://')+window.location.host + '/ws/';
+         var wsUri = (window.location.protocol=='https:'&&'wss://'||'ws://')+ url + '/ws/' + UID;
+         console.log(wsUri);
          conn = new WebSocket(wsUri);
          log('Connecting...');
          conn.onopen = function() {
@@ -51,9 +52,10 @@
          }
        }
        $('#connect').click(function() {
-         $.get('http://localhost:8080/node/'+ UID, function(res) {
+         $.get('http://localhost:8081/node/'+ UID, function(res) {
+           let url = res.Ok ? res.Ok[1] : null;
            if (conn == null) {
-             connect();
+             connect(UID, url);
            } else {
              disconnect();
            }
@@ -63,8 +65,16 @@
        });
        $('#send').click(function() {
          var text = $('#text').val();
+         var payload = {
+           room: null,
+           recipient: "balblabla",
+           content: text
+         };
+
+         payload = JSON.stringify(payload);
+
          log('Sending: ' + text);
-         conn.send(text);
+         conn.send(payload);
          $('#text').val('').focus();
          return false;
        });

@@ -1,0 +1,11 @@
+[[nodes]]
+private_addr = "127.0.0.1:8000"
+public_addr = "127.0.0.1:8080"
+
+[[nodes]]
+private_addr = "127.0.0.1:8001"
+public_addr = "127.0.0.1:8081"
+
+[[nodes]]
+private_addr = "127.0.0.1:8002"
+public_addr = "127.0.0.1:8082"

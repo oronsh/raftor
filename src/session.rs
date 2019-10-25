@@ -90,7 +90,7 @@ impl Handler<Message> for Session {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct TextMessage {
     recipient: String,
     content: String,
@@ -109,15 +109,13 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
                 self.hb = Instant::now();
             },
             ws::Message::Text(msg) => {
-                println!("{}", msg);
-                /*
                 let msg = serde_json::from_slice::<TextMessage>(msg.as_ref()).unwrap();
+
                 self.server.do_send(server::Message {
                     id: msg.recipient,
                     content: msg.content,
                     room: msg.room,
                 });
-                */
             },
             ws::Message::Binary(_) => println!("Unexpected binary"),
             ws::Message::Close(_) => {

@@ -1,15 +1,21 @@
 use actix::prelude::*;
-use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer, Responder};
+use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer, Responder,
+                middleware::Logger, http::header};
+use actix_cors::Cors;
 use actix_web_actors::ws;
 use actix_files as fs;
 use std::env;
 use futures::{Future};
 use std::sync::Arc;
+use config;
+use std::collections::HashMap;
+use serde::{Deserialize};
 
 use raftor::{
     network::{Network, GetNode},
     server::Server,
     session::Session,
+    config::{ConfigSchema},
 };
 
 fn index_route(
@@ -22,7 +28,7 @@ fn index_route(
     srv.net.send(GetNode(uid.to_string()))
         .map_err(Error::from)
         .and_then(|res| {
-            Ok(HttpResponse::Ok().body(res.unwrap().to_string()))
+            Ok(HttpResponse::Ok().json(res))
         })
 }
 
@@ -31,8 +37,10 @@ fn ws_route(
     stream: web::Payload,
     srv: web::Data<Arc<ServerData>>
 ) -> Result<HttpResponse, Error> {
+    let uid = req.match_info().get("uid").unwrap_or("");
+
     ws::start(
-        Session::new("testuserid", "main", srv.server.clone()),
+        Session::new(uid, "main", srv.server.clone()),
         &req,
         stream,
     )
@@ -51,6 +59,15 @@ fn main() {
     let local_address = args[1].as_str();
     let public_address = args[2].as_str();
 
+    let mut config = config::Config::default();
+
+    config
+        .merge(config::File::with_name("Config")).unwrap()
+        .merge(config::Environment::with_prefix("APP")).unwrap();
+
+    let config = config.try_into::<ConfigSchema>().unwrap();
+
+    net.configure(config);
     // listen on ip and port
     net.listen(local_address);
 
@@ -71,6 +88,14 @@ fn main() {
 
     HttpServer::new(move || {
         App::new()
+            .wrap(
+                Cors::new()
+                    .allowed_methods(vec!["GET", "POST"])
+                    .allowed_headers(vec![header::AUTHORIZATION, header::ACCEPT])
+                    .allowed_header(header::CONTENT_TYPE)
+                    .max_age(3600),
+            )
+            .wrap(Logger::default())
             .data(state.clone())
             .service(web::resource("/").route(web::get().to(|| {
                 HttpResponse::Found()
@@ -78,7 +103,7 @@ fn main() {
                     .finish()
             })))
             .service(web::resource("/node/{uid}").to_async(index_route))
-            .service(web::resource("/ws/").to_async(ws_route))
+            .service(web::resource("/ws/{uid}").to_async(ws_route))
         // static resources
             .service(fs::Files::new("/static/", "static/"))
     })

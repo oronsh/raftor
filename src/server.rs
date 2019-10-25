@@ -57,6 +57,10 @@ impl Handler<Message> for Server {
     type Result = ();
 
     fn handle(&mut self, msg: Message, ctx: &mut Context<Self>) {
-        println!("Got message: {:?}", msg);
+        if let Some(ref mut session) = self.sessions.get(&msg.id) {
+            println!("Found recipient");
+        } else {
+            println!("Should dispatch recipient");
+        }
     }
 }

@@ -8,6 +8,7 @@ use tokio::timer::Delay;
 use crate::network::{Listener, MsgTypes, Node, NodeSession, remote::{SendRaftMessage}};
 use crate::raft::{storage, RaftNode};
 use crate::utils::generate_node_id;
+use crate::config::{ConfigSchema, NodeList, NodeInfo};
 
 pub type Payload = messages::ClientPayload<storage::MemoryStorageData, storage::MemoryStorageResponse, storage::MemoryStorageError>;
 
@@ -24,6 +25,7 @@ pub struct Network {
     peers: Vec<String>,
     nodes: HashMap<NodeId, Addr<Node>>,
     nodes_connected: Vec<NodeId>,
+    nodes_info: HashMap<NodeId, NodeInfo>,
     listener: Option<Addr<Listener>>,
     state: NetworkState,
     pub metrics: Option<RaftMetrics>,
@@ -40,9 +42,19 @@ impl Network {
             raft: None,
             listener: None,
             nodes_connected: Vec::new(),
+            nodes_info: HashMap::new(),
             state: NetworkState::Initialized,
             metrics: None,
             sessions: HashMap::new(),
+        }
+    }
+
+    pub fn configure(&mut self, config: ConfigSchema) {
+        let nodes = config.nodes;
+
+        for node in nodes.iter() {
+            let id = generate_node_id(node.private_addr.as_str());
+            self.nodes_info.insert(id, node.clone());
         }
     }
 
@@ -135,17 +147,29 @@ impl Actor for Network {
 pub struct GetNode(pub String);
 
 impl Message for GetNode {
-    type Result = Result<NodeId, ()>;
+    type Result = Result<(NodeId, String), ()>;
 }
 
 impl Handler<GetNode> for Network {
-    type Result = Response<NodeId, ()>;
+    type Result = ResponseActFuture<Self, (NodeId, String), ()>;
 
     fn handle(&mut self, msg: GetNode, ctx: &mut Context<Self>) -> Self::Result {
         let raft = self.raft.as_mut().unwrap();
-        Response::fut(raft.get_node(msg.0.as_str())
-                      .map_err(|_| ())
-                      .map(|res| res.unwrap())
+        Box::new(fut::wrap_future::<_, Self>(raft.get_node(msg.0.as_str()))
+                 .map_err(|_, _, _| ())
+                 .map(|res, _, _| res.unwrap())
+                 .map(|id, act, _| {
+                     let default = NodeInfo {
+                         public_addr: "".to_owned(),
+                         private_addr: "".to_owned(),
+                     };
+
+                     let node = act.nodes_info.get(&id).unwrap_or(&default);
+                     (id, node.public_addr.to_owned())
+                 })
+                 .and_then(|res, _, _| {
+                     fut::result(Ok(res))
+                 })
         )
     }
 }
@@ -167,10 +191,9 @@ impl Handler<SendToRaft> for Network {
             match type_id {
                 MsgTypes::AppendEntriesRequest => {
                     let raft_msg = serde_json::from_slice::<
-                        messages::AppendEntriesRequest<storage::MemoryStorageData>,
-                    >(body.as_ref())
-                    .unwrap();
-
+                            messages::AppendEntriesRequest<storage::MemoryStorageData>,
+                        >(body.as_ref())
+                        .unwrap();
                     let future = raft.addr.send(raft_msg).map_err(|_| ()).and_then(|res| {
                         let res_payload = serde_json::to_string(&res).unwrap();
                         futures::future::ok(res_payload)
@@ -190,7 +213,7 @@ impl Handler<SendToRaft> for Network {
                 MsgTypes::InstallSnapshotRequest => {
                     let raft_msg =
                         serde_json::from_slice::<messages::InstallSnapshotRequest>(body.as_ref())
-                            .unwrap();
+                        .unwrap();
 
                     let future = raft.addr.send(raft_msg).map_err(|_| ()).and_then(|res| {
                         let res_payload = serde_json::to_string(&res).unwrap();
@@ -201,7 +224,7 @@ impl Handler<SendToRaft> for Network {
                 MsgTypes::ClientPayload => {
                     let raft_msg =
                         serde_json::from_slice::<messages::ClientPayload<storage::MemoryStorageData, storage::MemoryStorageResponse, storage::MemoryStorageError>>(body.as_ref())
-                            .unwrap();
+                        .unwrap();
 
                     let future = raft.addr.send(raft_msg).map_err(|_| ()).and_then(|res| {
                         let res_payload = serde_json::to_string(&res).unwrap();
@@ -290,58 +313,58 @@ impl Handler<ClientRequest> for Network {
                 if act.id == leader {
                     let raft = act.raft.as_ref().unwrap();
                     fut::Either::A(fut::wrap_future::<_, Self>(raft.addr.send(payload))
-                        .map_err(|_, _, _| ())
-                        .and_then(move |res, act, ctx| {
-                            match res {
-                                Ok(_) => {
-                                    fut::ok(())
-                                },
-                                Err(err) => match err {
-                                    messages::ClientError::Internal => {
-                                        debug!("TEST: resending client request.");
-                                        ctx.notify(msg);
-                                        fut::ok(())
-                                    }
-                                    messages::ClientError::Application(err) => {
-                                        panic!("Unexpected application error from client request: {:?}", err);
-                                    }
-                                    messages::ClientError::ForwardToLeader{leader, ..} => {
-                                        debug!("TEST: received ForwardToLeader error. Updating leader and forwarding.");
-                                        ctx.notify(msg);
-                                        fut::ok(())
-                                    }
-                                }
-                            }
-                        })
+                                   .map_err(|_, _, _| ())
+                                   .and_then(move |res, act, ctx| {
+                                       match res {
+                                           Ok(_) => {
+                                               fut::ok(())
+                                           },
+                                           Err(err) => match err {
+                                               messages::ClientError::Internal => {
+                                                   debug!("TEST: resending client request.");
+                                                   ctx.notify(msg);
+                                                   fut::ok(())
+                                               }
+                                               messages::ClientError::Application(err) => {
+                                                   panic!("Unexpected application error from client request: {:?}", err);
+                                               }
+                                               messages::ClientError::ForwardToLeader{leader, ..} => {
+                                                   debug!("TEST: received ForwardToLeader error. Updating leader and forwarding.");
+                                                   ctx.notify(msg);
+                                                   fut::ok(())
+                                               }
+                                           }
+                                       }
+                                   })
                     )
 
                 } else {
                     // send to remote raft
                     let node = act.get_node(leader).unwrap();
                     fut::Either::B(fut::wrap_future::<_, Self>(node.send(SendRaftMessage(payload)))
-                        .map_err(|_, _, _| ())
-                        .and_then(move |res, act, ctx| {
-                            match res {
-                                Ok(_) => {
-                                    fut::ok(())
-                                },
-                                Err(err) => match err {
-                                    messages::ClientError::Internal => {
-                                        debug!("TEST: resending client request.");
-                                        ctx.notify(msg);
-                                        fut::ok(())
-                                    }
-                                    messages::ClientError::Application(err) => {
-                                        panic!("Unexpected application error from client request: {:?}", err)
-                                    }
-                                    messages::ClientError::ForwardToLeader{leader, ..} => {
-                                        debug!("TEST: received ForwardToLeader error. Updating leader and forwarding.");
-                                        ctx.notify(msg);
-                                        fut::ok(())
-                                    }
-                                }
-                            }
-                        })
+                                   .map_err(|_, _, _| ())
+                                   .and_then(move |res, act, ctx| {
+                                       match res {
+                                           Ok(_) => {
+                                               fut::ok(())
+                                           },
+                                           Err(err) => match err {
+                                               messages::ClientError::Internal => {
+                                                   debug!("TEST: resending client request.");
+                                                   ctx.notify(msg);
+                                                   fut::ok(())
+                                               }
+                                               messages::ClientError::Application(err) => {
+                                                   panic!("Unexpected application error from client request: {:?}", err)
+                                               }
+                                               messages::ClientError::ForwardToLeader{leader, ..} => {
+                                                   debug!("TEST: received ForwardToLeader error. Updating leader and forwarding.");
+                                                   ctx.notify(msg);
+                                                   fut::ok(())
+                                               }
+                                           }
+                                       }
+                                   })
                     )
                 }
             });
@@ -360,9 +383,9 @@ impl Handler<RaftMetrics> for Network {
 
     fn handle(&mut self, msg: RaftMetrics, _: &mut Context<Self>) -> Self::Result {
         debug!("Metrics: node={} state={:?} leader={:?} term={} index={} applied={} cfg={{join={} members={:?} non_voters={:?} removing={:?}}}",
-                 msg.id, msg.state, msg.current_leader, msg.current_term, msg.last_log_index, msg.last_applied,
-                 msg.membership_config.is_in_joint_consensus, msg.membership_config.members,
-                 msg.membership_config.non_voters, msg.membership_config.removing,
+               msg.id, msg.state, msg.current_leader, msg.current_term, msg.last_log_index, msg.last_applied,
+               msg.membership_config.is_in_joint_consensus, msg.membership_config.members,
+               msg.membership_config.non_voters, msg.membership_config.removing,
         );
         self.metrics = Some(msg);
     }
