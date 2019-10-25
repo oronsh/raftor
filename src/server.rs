@@ -1,8 +1,13 @@
 use actix::prelude::*;
 use std::collections::{HashMap, HashSet};
+use serde::{Serialize, Deserialize};
 
-use crate::session::{Session};
-use crate::network::{Network};
+use crate::session::{self, Session};
+use crate::network::{
+    Network,
+    remote::{DistributeMessage},
+    GetNodeAddr,
+};
 
 pub struct Server {
     rooms: HashMap<String, HashSet<String>>,
@@ -26,11 +31,22 @@ pub struct Connect(pub String, pub Addr<Session>);
 #[derive(Message)]
 pub struct Disconnect(pub String);
 
-#[derive(Message, Debug)]
-pub struct Message {
-    pub id: String,
-    pub content: String,
-    pub room: Option<String>,
+#[derive(Message, Serialize, Deserialize, Debug)]
+pub struct Join {
+    pub room_id: String,
+    pub uid: String,
+}
+
+#[derive(Message, Serialize, Deserialize, Debug)]
+pub struct SendRecipient {
+    pub recipient_id: String,
+    pub uid: String,
+}
+
+#[derive(Message, Serialize, Deserialize, Debug)]
+pub struct SendRoom {
+    pub room_id: String,
+    pub uid: String,
 }
 
 impl Actor for Server {
@@ -53,14 +69,44 @@ impl Handler<Disconnect> for Server {
     }
 }
 
-impl Handler<Message> for Server {
+impl Handler<session::Message> for Server {
     type Result = ();
 
-    fn handle(&mut self, msg: Message, ctx: &mut Context<Self>) {
-        if let Some(ref mut session) = self.sessions.get(&msg.id) {
-            println!("Found recipient");
+    fn handle(&mut self, msg: session::Message, ctx: &mut Context<Self>) {
+
+    }
+}
+
+impl Handler<Join> for Server {
+    type Result = ();
+
+    fn handle(&mut self, msg: Join, ctx: &mut Context<Self>) {
+        if let Some(ref mut room) = self.rooms.get_mut(&msg.room_id) {
+            room.insert(msg.uid);
         } else {
-            println!("Should dispatch recipient");
+            Arbiter::spawn(self.net.send(GetNodeAddr(msg.uid.clone()))
+                           .then(|res| {
+                               let node = res.unwrap().unwrap();
+                               node.do_send(DistributeMessage(msg));
+
+                               futures::future::ok(())
+                           }));
         }
+    }
+}
+
+impl Handler<SendRecipient> for Server {
+    type Result = ();
+
+    fn handle(&mut self, msg: SendRecipient, ctx: &mut Context<Self>) {
+
+    }
+}
+
+impl Handler<SendRoom> for Server {
+    type Result = ();
+
+    fn handle(&mut self, msg: SendRoom, ctx: &mut Context<Self>) {
+
     }
 }

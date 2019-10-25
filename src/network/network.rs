@@ -4,11 +4,13 @@ use log::debug;
 use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, Instant};
 use tokio::timer::Delay;
+use serde::{de::DeserializeOwned, Serialize};
 
-use crate::network::{Listener, MsgTypes, Node, NodeSession, remote::{SendRaftMessage}};
+use crate::network::{Listener, MsgTypes, ServerTypes, Node, NodeSession, remote::{SendRaftMessage}};
 use crate::raft::{storage, RaftNode};
 use crate::utils::generate_node_id;
 use crate::config::{ConfigSchema, NodeList, NodeInfo};
+use crate::server;
 
 pub type Payload = messages::ClientPayload<storage::MemoryStorageData, storage::MemoryStorageResponse, storage::MemoryStorageError>;
 
@@ -26,6 +28,7 @@ pub struct Network {
     nodes: HashMap<NodeId, Addr<Node>>,
     nodes_connected: Vec<NodeId>,
     nodes_info: HashMap<NodeId, NodeInfo>,
+    server: Option<Addr<server::Server>>,
     listener: Option<Addr<Listener>>,
     state: NetworkState,
     pub metrics: Option<RaftMetrics>,
@@ -43,6 +46,7 @@ impl Network {
             listener: None,
             nodes_connected: Vec::new(),
             nodes_info: HashMap::new(),
+            server: None,
             state: NetworkState::Initialized,
             metrics: None,
             sessions: HashMap::new(),
@@ -96,6 +100,7 @@ impl Actor for Network {
 
         println!("Listening on {}", network_address);
         println!("Local node id: {}", self.id);
+
         let listener_addr = Listener::new(network_address.as_str(), ctx.address().clone());
         self.listener = Some(listener_addr);
         self.nodes_connected.push(self.id);
@@ -144,6 +149,33 @@ impl Actor for Network {
     }
 }
 
+pub struct GetNodeAddr(pub String);
+
+impl Message for GetNodeAddr {
+    type Result = Result<Addr<Node>, ()>;
+}
+
+impl Handler<GetNodeAddr> for Network {
+    type Result = ResponseActFuture<Self, Addr<Node>, ()>;
+
+    fn handle(&mut self, msg: GetNodeAddr, ctx: &mut Context<Self>) -> Self::Result {
+        let res = fut::wrap_future(ctx.address().send(GetNode(msg.0)))
+        .map_err(|_, _: &mut Network, _| println!("GetNodeAddr Error"))
+        .and_then(|res, act, _| {
+            if let Ok(info) = res {
+                let id = info.0;
+
+                let node = act.nodes.get(&id).unwrap();
+                fut::result(Ok(node.clone()))
+            } else {
+                fut::result(Err(()))
+            }
+        });
+
+        Box::new(res)
+    }
+}
+
 pub struct GetNode(pub String);
 
 impl Message for GetNode {
@@ -171,6 +203,55 @@ impl Handler<GetNode> for Network {
                      fut::result(Ok(res))
                  })
         )
+    }
+}
+
+pub struct SendToServer(pub ServerTypes, pub String);
+
+impl Message for SendToServer {
+    type Result = Result<String, ()>;
+}
+
+impl Handler<SendToServer> for Network {
+    type Result = Response<String, ()>;
+
+    fn handle(&mut self, msg: SendToServer, _ctx: &mut Context<Self>) -> Self::Result {
+        let type_id = msg.0;
+        let body = msg.1;
+
+        let res = if let Some(ref mut server) = self.server {
+            match type_id {
+                ServerTypes::Join => {
+                    let msg = serde_json::from_slice::<server::Join>(body.as_ref()).unwrap();
+                    let future = server.send(msg).map_err(|_| ()).and_then(|res| {
+                        let res_payload = serde_json::to_string(&res).unwrap();
+                        futures::future::ok(res_payload)
+                    });
+                    Response::fut(future)
+                },
+                ServerTypes::SendRecipient => {
+                    let msg = serde_json::from_slice::<server::SendRecipient>(body.as_ref()).unwrap();
+                    let future = server.send(msg).map_err(|_| ()).and_then(|res| {
+                        let res_payload = serde_json::to_string(&res).unwrap();
+                        futures::future::ok(res_payload)
+                    });
+                    Response::fut(future)
+                },
+                ServerTypes::SendRoom => {
+                    let msg = serde_json::from_slice::<server::SendRoom>(body.as_ref()).unwrap();
+                    let future = server.send(msg).map_err(|_| ()).and_then(|res| {
+                        let res_payload = serde_json::to_string(&res).unwrap();
+                        futures::future::ok(res_payload)
+                    });
+                    Response::fut(future)
+                },
+                _ => Response::reply(Ok("".to_owned())),
+            }
+        } else {
+            Response::reply(Ok("".to_owned()))
+        };
+
+        res
     }
 }
 
@@ -287,6 +368,17 @@ impl Handler<GetCurrentLeader> for Network {
         } else {
             Err(())
         }
+    }
+}
+
+#[derive(Message)]
+pub struct SetServer(pub Addr<server::Server>);
+
+impl Handler<SetServer> for Network {
+    type Result = ();
+
+    fn handle(&mut self, msg: SetServer, _: &mut Context<Self>) {
+        self.server = Some(msg.0);
     }
 }
 

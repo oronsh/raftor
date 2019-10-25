@@ -13,7 +13,12 @@ use crate::network::{
     NodeResponse,
     PeerConnected,
     SendToRaft,
+    MsgTypes,
+    ServerTypes,
+    SendToServer,
 };
+
+use crate::server;
 
 pub struct Listener {
     network: Addr<Network>,
@@ -100,7 +105,6 @@ impl Actor for NodeSession {
 
 impl actix::io::WriteHandler<std::io::Error> for NodeSession {}
 
-
 impl StreamHandler<NodeRequest, std::io::Error> for NodeSession {
     fn handle(&mut self, msg: NodeRequest, ctx: &mut Context<Self>) {
         match msg {
@@ -113,16 +117,32 @@ impl StreamHandler<NodeRequest, std::io::Error> for NodeSession {
                 // self.network.do_send(PeerConnected(id));
             },
             NodeRequest::Message(mid, type_id, body) => {
-                let task = actix::fut::wrap_future(self.network.send(SendToRaft(type_id, body)))
-                    .map_err(|err, _: &mut NodeSession, _| {
-                        error!("{:?}", err);
-                    })
-                    .and_then(move |res, act, _| {
-                        let payload = res.unwrap();
-                        act.framed.write(NodeResponse::Result(mid, payload));
-                        actix::fut::result(Ok(()))
-                    });
-                ctx.spawn(task);
+                match type_id {
+                    MsgTypes::AppMessage(server_type) => {
+                        let task = actix::fut::wrap_future(self.network.send(SendToServer(server_type, body)))
+                            .map_err(|err, _: &mut NodeSession, _| {
+                                error!("{:?}", err);
+                            })
+                            .and_then(move |res, act, _| {
+                                let payload = res.unwrap();
+                                act.framed.write(NodeResponse::Result(mid, payload));
+                                actix::fut::result(Ok(()))
+                            });
+                        ctx.spawn(task);
+                    },
+                    _ => {
+                        let task = actix::fut::wrap_future(self.network.send(SendToRaft(type_id, body)))
+                            .map_err(|err, _: &mut NodeSession, _| {
+                                error!("{:?}", err);
+                            })
+                            .and_then(move |res, act, _| {
+                                let payload = res.unwrap();
+                                act.framed.write(NodeResponse::Result(mid, payload));
+                                actix::fut::result(Ok(()))
+                            });
+                        ctx.spawn(task);
+                    }
+                }
             },
         }
     }

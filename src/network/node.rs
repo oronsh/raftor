@@ -20,6 +20,7 @@ use crate::network::{
         RemoteMessage,
         RemoteMessageResult,
         SendRaftMessage,
+        DistributeMessage,
     },
 };
 
@@ -130,6 +131,28 @@ where M: RemoteMessage + 'static,
     type Result = RemoteMessageResult<M>;
 
     fn handle(&mut self, msg: SendRaftMessage<M>, _ctx: &mut Context<Self>) -> Self::Result {
+        let (tx, rx) = oneshot::channel::<String>();
+
+        if let Some(ref mut framed) = self.framed {
+            self.mid += 1;
+            self.requests.insert(self.mid, tx);
+
+            let body = serde_json::to_string::<M>(&msg.0).unwrap();
+            let request = NodeRequest::Message(self.mid, M::type_id(), body);
+            framed.write(request);
+        }
+
+        RemoteMessageResult{rx: rx, m: PhantomData}
+    }
+}
+
+impl<M> Handler<DistributeMessage<M>> for Node
+where M: RemoteMessage + 'static,
+      M::Result: Send + Serialize + DeserializeOwned
+{
+   type Result = RemoteMessageResult<M>;
+
+    fn handle(&mut self, msg: DistributeMessage<M>, _ctx: &mut Context<Self>) -> Self::Result {
         let (tx, rx) = oneshot::channel::<String>();
 
         if let Some(ref mut framed) = self.framed {

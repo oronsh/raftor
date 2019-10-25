@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use serde::{Deserialize};
 
 use raftor::{
-    network::{Network, GetNode},
+    network::{Network, GetNode, SetServer},
     server::Server,
     session::Session,
     config::{ConfigSchema},
@@ -81,8 +81,9 @@ fn main() {
     net.peers(peers);
 
     let net_addr = net.start();
-
     let server = Server::new(net_addr.clone()).start();
+    net_addr.do_send(SetServer(server.clone()));
+
 
     let state = Arc::new(ServerData{server: server.clone(), net: net_addr.clone()});
 

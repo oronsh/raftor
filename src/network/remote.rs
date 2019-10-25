@@ -11,8 +11,9 @@ use actix_raft::{
     messages,
 };
 
-use crate::network::{Node, MsgTypes};
+use crate::network::{Node, MsgTypes, ServerTypes};
 use crate::raft::MemRaft;
+use crate::server;
 
 pub trait RemoteMessage: Message + Send + Serialize + DeserializeOwned
 where Self::Result: Send + Serialize + DeserializeOwned {
@@ -52,11 +53,48 @@ where
     }
 }
 
+impl<M> MessageResponse<Node, DistributeMessage<M>> for RemoteMessageResult<M>
+where
+      M: RemoteMessage + 'static,
+      M::Result: Send + Serialize + DeserializeOwned
+{
+    fn handle<R: ResponseChannel<DistributeMessage<M>>>(self, _: &mut Context<Node>, tx: Option<R>) {
+        Arbiter::spawn(
+            self.rx
+                .map_err(|e| error!("{:?}", e))
+                .and_then(move |msg| {
+                    // Raft node has not been initialized yet
+                    if msg == "" {
+                        return Err(());
+                    }
+
+                    let msg = serde_json::from_slice::<M::Result>(msg.as_ref()).unwrap();
+                    if let Some(tx) = tx {
+                        let _ = tx.send(msg);
+                    }
+                    Ok(())
+                })
+        );
+    }
+}
+
 pub struct SendRaftMessage<M>(pub M)
 where M: RemoteMessage + 'static,
       M::Result: Send + Serialize + DeserializeOwned;
 
 impl<M> Message for SendRaftMessage<M>
+where M: RemoteMessage + 'static,
+      M::Result: Send + Serialize + DeserializeOwned
+{
+    type Result = M::Result;
+}
+
+/// DistributeMessage(Message)
+pub struct DistributeMessage<M>(pub M)
+where M: RemoteMessage + 'static,
+      M::Result: Send + Serialize + DeserializeOwned;
+
+impl<M> Message for DistributeMessage<M>
 where M: RemoteMessage + 'static,
       M::Result: Send + Serialize + DeserializeOwned
 {
@@ -81,4 +119,17 @@ impl RemoteMessage for messages::InstallSnapshotRequest {
 
 impl<D: AppData, R: AppDataResponse, E: AppError> RemoteMessage for messages::ClientPayload<D, R, E> {
     fn type_id() -> MsgTypes { MsgTypes::ClientPayload }
+}
+
+/// Impl RemoteMessage for Application Messages
+impl RemoteMessage for server::Join {
+    fn type_id() -> MsgTypes { MsgTypes::AppMessage(ServerTypes::Join) }
+}
+
+impl RemoteMessage for server::SendRoom {
+    fn type_id() -> MsgTypes { MsgTypes::AppMessage(ServerTypes::SendRoom) }
+}
+
+impl RemoteMessage for server::SendRecipient {
+    fn type_id() -> MsgTypes { MsgTypes::AppMessage(ServerTypes::SendRecipient) }
 }

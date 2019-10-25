@@ -80,25 +80,35 @@ impl Actor for Session {
 }
 
 #[derive(Message)]
-pub struct Message(pub String);
+pub struct SendMessage(pub String);
 
-impl Handler<Message> for Session {
+impl Handler<SendMessage> for Session {
     type Result = ();
 
-    fn handle(&mut self, msg: Message, ctx: &mut Self::Context) {
+    fn handle(&mut self, msg: SendMessage, ctx: &mut Self::Context) {
         ctx.text(msg.0);
     }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct TextMessage {
-    recipient: String,
+pub enum Cmds {
+    /// Join(room_id)
+    Join(String),
+    /// Send(recipient_id)
+    SendRecipient(String),
+    /// Send(room_id)
+    SendRoom(String),
+}
+
+#[derive(Message, Serialize, Deserialize, Debug)]
+pub struct Message {
     content: String,
-    room: Option<String>,
+    cmd: Cmds,
 }
 
 impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
     fn handle(&mut self, msg: ws::Message, ctx: &mut Self::Context) {
+        let uid = self.id.to_owned();
 
         match msg {
             ws::Message::Ping(msg) => {
@@ -109,13 +119,30 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
                 self.hb = Instant::now();
             },
             ws::Message::Text(msg) => {
-                let msg = serde_json::from_slice::<TextMessage>(msg.as_ref()).unwrap();
-
-                self.server.do_send(server::Message {
-                    id: msg.recipient,
-                    content: msg.content,
-                    room: msg.room,
-                });
+                let msg = serde_json::from_slice::<Message>(msg.as_ref());
+                match msg {
+                    Ok(msg) => match msg.cmd {
+                        Cmds::Join(room_id) => {
+                            self.server.do_send(server::Join {
+                                room_id: room_id,
+                                uid: uid,
+                            });
+                        },
+                        Cmds::SendRecipient(recipient_id) => {
+                            self.server.do_send(server::SendRecipient {
+                                recipient_id: recipient_id,
+                                uid: uid,
+                            });
+                        },
+                        Cmds::SendRoom(room_id) => {
+                            self.server.do_send(server::SendRoom {
+                                room_id: room_id,
+                                uid: uid,
+                            });
+                        },
+                    },
+                    Err(err) => println!("Error: {:?}", err)
+                }
             },
             ws::Message::Binary(_) => println!("Unexpected binary"),
             ws::Message::Close(_) => {

@@ -21,11 +21,19 @@ pub enum NodeResponse {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+pub enum ServerTypes {
+    Join,
+    SendRecipient,
+    SendRoom,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub enum MsgTypes {
     AppendEntriesRequest,
     VoteRequest,
     InstallSnapshotRequest,
     ClientPayload,
+    AppMessage(ServerTypes),
 }
 
 pub struct NodeCodec;
