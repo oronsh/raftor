@@ -13,13 +13,21 @@ const CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct Session {
     id: String,
-    uid: Option<String>,
     room: String,
     server: Addr<Server>,
     hb: Instant,
 }
 
 impl Session {
+    pub fn new(id: &str, room: &str, server: Addr<Server>) -> Self {
+        Session {
+            id: id.to_owned(),
+            room: room.to_owned(),
+            server: server,
+            hb: Instant::now(),
+        }
+    }
+
     fn hb(&self, ctx: &mut ws::WebsocketContext<Self>) {
         ctx.run_interval(HEARTBEAT_INTERVAL, |act, ctx| {
             // check client heartbeats
@@ -101,12 +109,15 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
                 self.hb = Instant::now();
             },
             ws::Message::Text(msg) => {
+                println!("{}", msg);
+                /*
                 let msg = serde_json::from_slice::<TextMessage>(msg.as_ref()).unwrap();
                 self.server.do_send(server::Message {
                     id: msg.recipient,
                     content: msg.content,
                     room: msg.room,
                 });
+                */
             },
             ws::Message::Binary(_) => println!("Unexpected binary"),
             ws::Message::Close(_) => {

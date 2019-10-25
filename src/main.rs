@@ -4,22 +4,43 @@ use actix_web_actors::ws;
 use actix_files as fs;
 use std::env;
 use futures::{Future};
+use std::sync::Arc;
 
-use raftor::network::{Network, GetNode};
-
+use raftor::{
+    network::{Network, GetNode},
+    server::Server,
+    session::Session,
+};
 
 fn index_route(
     req: HttpRequest,
     stream: web::Payload,
-    srv: web::Data<Addr<Network>>,
+    srv: web::Data<Arc<ServerData>>,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     let uid = req.match_info().get("uid").unwrap_or("");
 
-    srv.send(GetNode(uid.to_string()))
+    srv.net.send(GetNode(uid.to_string()))
         .map_err(Error::from)
         .and_then(|res| {
             Ok(HttpResponse::Ok().body(res.unwrap().to_string()))
         })
+}
+
+fn ws_route(
+    req: HttpRequest,
+    stream: web::Payload,
+    srv: web::Data<Arc<ServerData>>
+) -> Result<HttpResponse, Error> {
+    ws::start(
+        Session::new("testuserid", "main", srv.server.clone()),
+        &req,
+        stream,
+    )
+}
+
+struct ServerData {
+    server: Addr<Server>,
+    net: Addr<Network>,
 }
 
 fn main() {
@@ -44,10 +65,20 @@ fn main() {
 
     let net_addr = net.start();
 
+    let server = Server::new(net_addr.clone()).start();
+
+    let state = Arc::new(ServerData{server: server.clone(), net: net_addr.clone()});
+
     HttpServer::new(move || {
         App::new()
-            .data(net_addr.clone())
+            .data(state.clone())
+            .service(web::resource("/").route(web::get().to(|| {
+                HttpResponse::Found()
+                    .header("LOCATION", "/static/index.html")
+                    .finish()
+            })))
             .service(web::resource("/node/{uid}").to_async(index_route))
+            .service(web::resource("/ws/").to_async(ws_route))
         // static resources
             .service(fs::Files::new("/static/", "static/"))
     })
