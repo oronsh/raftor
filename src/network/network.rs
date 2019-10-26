@@ -186,26 +186,19 @@ impl Message for GetNode {
 }
 
 impl Handler<GetNode> for Network {
-    type Result = ResponseActFuture<Self, (NodeId, String), ()>;
+    type Result = Result<(NodeId, String), ()>;
 
     fn handle(&mut self, msg: GetNode, ctx: &mut Context<Self>) -> Self::Result {
-        let raft = self.raft.as_mut().unwrap();
-        Box::new(fut::wrap_future::<_, Self>(raft.get_node(msg.0.as_str()))
-                 .map_err(|_, _, _| ())
-                 .map(|res, _, _| res.unwrap())
-                 .map(|id, act, _| {
-                     let default = NodeInfo {
-                         public_addr: "".to_owned(),
-                         private_addr: "".to_owned(),
-                     };
+        let ring = self.ring.read().unwrap();
+        let node_id = ring.get_node(msg.0).unwrap();
 
-                     let node = act.nodes_info.get(&id).unwrap_or(&default);
-                     (id, node.public_addr.to_owned())
-                 })
-                 .and_then(|res, _, _| {
-                     fut::result(Ok(res))
-                 })
-        )
+        let default = NodeInfo {
+            public_addr: "".to_owned(),
+            private_addr: "".to_owned(),
+        };
+
+        let node = self.nodes_info.get(node_id).unwrap_or(&default);
+        Ok((*node_id, node.public_addr.to_owned()))
     }
 }
 
