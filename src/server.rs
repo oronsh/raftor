@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use serde::{Serialize, Deserialize};
 
 use crate::session::{self, Session};
+use crate::hash_ring::RingType;
 use crate::network::{
     Network,
     remote::{DistributeMessage},
@@ -13,14 +14,16 @@ pub struct Server {
     rooms: HashMap<String, HashSet<String>>,
     sessions: HashMap<String, Addr<Session>>,
     net: Addr<Network>,
+    ring: RingType,
 }
 
 impl Server {
-    pub fn new(addr: Addr<Network>) -> Self {
+    pub fn new(addr: Addr<Network>, ring: RingType) -> Self {
         Server {
             rooms: HashMap::new(),
             sessions: HashMap::new(),
             net: addr,
+            ring: ring,
         }
     }
 }

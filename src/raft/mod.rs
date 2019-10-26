@@ -11,6 +11,7 @@ use actix_raft::{
 use tempfile::{tempdir_in};
 use std::time::{Duration};
 use crate::network::{Network};
+use crate::hash_ring::RingType;
 
 pub mod network;
 pub mod storage;
@@ -29,7 +30,7 @@ pub struct RaftNode {
 }
 
 impl RaftNode {
-    pub fn new(id: NodeId, members: Vec<NodeId>, network: Addr<Network>) -> RaftNode {
+    pub fn new(id: NodeId, members: Vec<NodeId>, network: Addr<Network>, ring: RingType) -> RaftNode {
         let id = id;
         let raft_members = members.clone();
         let metrics_rate = 1;
@@ -41,7 +42,7 @@ impl RaftNode {
             .snapshot_policy(SnapshotPolicy::Disabled).snapshot_max_chunk_size(10000)
             .validate().expect("Raft config to be created without error.");
 
-        let storage = MemoryStorage::create(|_| MemoryStorage::new(raft_members, snapshot_dir));
+        let storage = MemoryStorage::create(move |_| MemoryStorage::new(raft_members, snapshot_dir, ring.clone()));
 
         let raft_network = network.clone();
         let raft_storage = storage.clone();

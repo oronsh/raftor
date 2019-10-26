@@ -11,6 +11,7 @@ use crate::raft::{storage, RaftNode};
 use crate::utils::generate_node_id;
 use crate::config::{ConfigSchema, NodeList, NodeInfo};
 use crate::server;
+use crate::hash_ring::RingType;
 
 pub type Payload = messages::ClientPayload<storage::MemoryStorageData, storage::MemoryStorageResponse, storage::MemoryStorageError>;
 
@@ -33,10 +34,11 @@ pub struct Network {
     state: NetworkState,
     pub metrics: Option<RaftMetrics>,
     sessions: HashMap<NodeId, Addr<NodeSession>>,
+    ring: RingType,
 }
 
 impl Network {
-    pub fn new() -> Network {
+    pub fn new(ring: RingType) -> Network {
         Network {
             id: 0,
             address: None,
@@ -50,6 +52,7 @@ impl Network {
             state: NetworkState::Initialized,
             metrics: None,
             sessions: HashMap::new(),
+            ring: ring,
         }
     }
 
@@ -121,7 +124,7 @@ impl Actor for Network {
                 let network_addr = ctx.address();
                 let members = act.nodes_connected.clone();
                 let id = act.id;
-                let raft_node = RaftNode::new(id, members, network_addr);
+                let raft_node = RaftNode::new(id, members, network_addr, act.ring.clone());
 
                 act.raft = Some(raft_node);
 

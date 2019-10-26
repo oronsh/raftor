@@ -9,7 +9,6 @@ use actix::prelude::*;
 use log::{debug, error};
 use serde::{Serialize, Deserialize};
 use rmp_serde as rmps;
-use hash_ring::HashRing;
 
 use actix_raft::{
     AppData, AppDataResponse, AppError, NodeId,
@@ -31,6 +30,8 @@ use actix_raft::{
         SaveHardState,
     },
 };
+
+use crate::hash_ring::RingType;
 
 type Entry = RaftEntry<MemoryStorageData>;
 
@@ -75,12 +76,12 @@ pub struct MemoryStorage {
     snapshot_dir: String,
     state_machine: BTreeMap<u64, Entry>,
     snapshot_actor: Addr<SnapshotActor>,
-    nodes: HashRing<NodeId>,
+    ring: RingType,
 }
 
 impl MemoryStorage {
     /// Create a new instance.
-    pub fn new(members: Vec<NodeId>, snapshot_dir: String) -> Self {
+    pub fn new(members: Vec<NodeId>, snapshot_dir: String, ring: RingType) -> Self {
         let snapshot_dir_pathbuf = std::path::PathBuf::from(snapshot_dir.clone());
         let membership = MembershipConfig{members, non_voters: vec![], removing: vec![], is_in_joint_consensus: false};
         Self{
@@ -89,7 +90,7 @@ impl MemoryStorage {
             snapshot_data: None, snapshot_dir,
             state_machine: Default::default(),
             snapshot_actor: SyncArbiter::start(1, move || SnapshotActor(snapshot_dir_pathbuf.clone())),
-            nodes: HashRing::new(Vec::new(), 10),
+            ring: ring,
         }
     }
 }
@@ -167,7 +168,8 @@ impl Handler<ApplyEntryToStateMachine<MemoryStorageData, MemoryStorageResponse, 
 
             if let EntryPayload::Normal(entry) = &msg.payload.payload {
                 let node_id = (*entry).data.0;
-                self.nodes.add_node(&node_id);
+                let mut ring = self.ring.write().unwrap();
+                ring.add_node(&node_id);
             } else {
 
             }
@@ -190,7 +192,8 @@ impl Handler<ReplicateToStateMachine<MemoryStorageData, MemoryStorageError>> for
             if let EntryPayload::Normal(entry) = &e.payload {
 
                 let node_id = entry.data.0;
-                self.nodes.add_node(&node_id);
+                let mut ring = self.ring.write().unwrap();
+                ring.add_node(&node_id);
             } else {
 
             }
@@ -461,7 +464,8 @@ impl Handler<GetNode> for MemoryStorage {
     type Result = Result<NodeId, ()>;
 
     fn handle(&mut self, msg: GetNode, ctx: &mut Context<Self>) -> Self::Result {
-        if let Some(node_id) = self.nodes.get_node(msg.0) {
+        let ring = self.ring.read().unwrap();
+        if let Some(node_id) = ring.get_node(msg.0) {
             Ok(*node_id)
         } else {
             Err(())

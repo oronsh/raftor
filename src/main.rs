@@ -16,6 +16,7 @@ use raftor::{
     server::Server,
     session::Session,
     config::{ConfigSchema},
+    hash_ring,
 };
 
 fn index_route(
@@ -52,13 +53,6 @@ struct ServerData {
 }
 
 fn main() {
-    let sys = System::new("testing");
-    let mut net = Network::new();
-
-    let args: Vec<String> = env::args().collect();
-    let local_address = args[1].as_str();
-    let public_address = args[2].as_str();
-
     let mut config = config::Config::default();
 
     config
@@ -66,6 +60,15 @@ fn main() {
         .merge(config::Environment::with_prefix("APP")).unwrap();
 
     let config = config.try_into::<ConfigSchema>().unwrap();
+
+    let ring = hash_ring::Ring::new(10);
+
+    let sys = System::new("testing");
+    let mut net = Network::new(ring.clone());
+
+    let args: Vec<String> = env::args().collect();
+    let local_address = args[1].as_str();
+    let public_address = args[2].as_str();
 
     net.configure(config);
     // listen on ip and port
@@ -81,7 +84,7 @@ fn main() {
     net.peers(peers);
 
     let net_addr = net.start();
-    let server = Server::new(net_addr.clone()).start();
+    let server = Server::new(net_addr.clone(), ring.clone()).start();
     net_addr.do_send(SetServer(server.clone()));
 
 
