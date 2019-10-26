@@ -2,7 +2,7 @@ use crypto::digest::Digest;
 use crypto::sha2::Sha256;
 
 /// Generating node id from node's remote address
-pub(crate) fn generate_node_id(node_address: &str) -> u64 {
+pub fn generate_node_id(node_address: &str) -> u64 {
     let mut hasher = Sha256::new();
     hasher.input_str(node_address);
 

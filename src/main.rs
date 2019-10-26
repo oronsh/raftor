@@ -17,6 +17,7 @@ use raftor::{
     session::Session,
     config::{ConfigSchema},
     hash_ring,
+    utils,
 };
 
 fn index_route(
@@ -70,6 +71,8 @@ fn main() {
     let local_address = args[1].as_str();
     let public_address = args[2].as_str();
 
+    let node_id = utils::generate_node_id(local_address);
+
     net.configure(config);
     // listen on ip and port
     net.listen(local_address);
@@ -84,7 +87,7 @@ fn main() {
     net.peers(peers);
 
     let net_addr = net.start();
-    let server = Server::new(net_addr.clone(), ring.clone()).start();
+    let server = Server::new(net_addr.clone(), ring.clone(), node_id).start();
     net_addr.do_send(SetServer(server.clone()));
 
 

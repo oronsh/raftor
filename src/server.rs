@@ -1,6 +1,7 @@
 use actix::prelude::*;
 use std::collections::{HashMap, HashSet};
 use serde::{Serialize, Deserialize};
+use actix_raft::NodeId;
 
 use crate::session::{self, Session};
 use crate::hash_ring::RingType;
@@ -15,15 +16,17 @@ pub struct Server {
     sessions: HashMap<String, Addr<Session>>,
     net: Addr<Network>,
     ring: RingType,
+    node_id: NodeId,
 }
 
 impl Server {
-    pub fn new(addr: Addr<Network>, ring: RingType) -> Self {
+    pub fn new(addr: Addr<Network>, ring: RingType, node_id: NodeId) -> Self {
         Server {
             rooms: HashMap::new(),
             sessions: HashMap::new(),
             net: addr,
             ring: ring,
+            node_id: node_id,
         }
     }
 }
@@ -111,5 +114,39 @@ impl Handler<SendRoom> for Server {
 
     fn handle(&mut self, msg: SendRoom, ctx: &mut Context<Self>) {
 
+    }
+}
+
+#[derive(Message, Serialize, Deserialize, Debug)]
+pub struct CreateRoom {
+    pub room_id: String,
+    pub uid: String,
+}
+
+impl Handler<CreateRoom> for Server {
+    type Result = ();
+
+    fn handle(&mut self, msg :CreateRoom, ctx: &mut Context<Self>) {
+        let ring = self.ring.read().unwrap();
+        let node_id = ring.get_node(msg.room_id.clone()).unwrap();
+
+        if *node_id != self.node_id {
+            Arbiter::spawn(self.net.send(GetNodeAddr(msg.uid.clone()))
+                           .then(|res| {
+                               let node = res.unwrap().unwrap();
+                               node.do_send(DistributeMessage(msg));
+
+                               futures::future::ok(())
+                           }));
+            return;
+        }
+
+        if let Some(ref mut room) = self.rooms.get_mut(&msg.room_id) {
+            return;
+        } else {
+            let mut users = HashSet::new();
+            users.insert(msg.uid);
+            self.rooms.insert(msg.room_id, users);
+        }
     }
 }
