@@ -138,6 +138,7 @@ impl Handler<CreateRoom> for Server {
 
                                futures::future::ok(())
                            }));
+            println!("Distributing message to node {}", node_id);
             return;
         }
 
@@ -146,7 +147,8 @@ impl Handler<CreateRoom> for Server {
         } else {
             let mut users = HashSet::new();
             users.insert(msg.uid);
-            self.rooms.insert(msg.room_id, users);
+            self.rooms.insert(msg.room_id.clone(), users);
+            println!("Room {} created", msg.room_id);
         }
     }
 }
