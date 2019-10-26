@@ -106,6 +106,22 @@ pub struct Message {
     cmd: Cmds,
 }
 
+#[derive(Message, Serialize, Deserialize, Debug)]
+pub struct TextMessage {
+    pub content: String,
+    pub sender_id: String,
+}
+
+impl Handler<TextMessage> for Session {
+    type Result = ();
+
+    fn handle(&mut self, msg: TextMessage, ctx: &mut Self::Context) {
+        let payload = serde_json::to_string(&msg).unwrap();
+        ctx.text(payload);
+    }
+}
+
+
 impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
     fn handle(&mut self, msg: ws::Message, ctx: &mut Self::Context) {
         let uid = self.id.to_owned();
@@ -132,12 +148,14 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
                             self.server.do_send(server::SendRecipient {
                                 recipient_id: recipient_id,
                                 uid: uid,
+                                content: msg.content,
                             });
                         },
                         Cmds::SendRoom(room_id) => {
                             self.server.do_send(server::SendRoom {
                                 room_id: room_id,
                                 uid: uid,
+                                content: msg.content
                             });
                         },
                     },

@@ -47,12 +47,14 @@ pub struct Join {
 pub struct SendRecipient {
     pub recipient_id: String,
     pub uid: String,
+    pub content: String,
 }
 
 #[derive(Message, Serialize, Deserialize, Debug)]
 pub struct SendRoom {
     pub room_id: String,
     pub uid: String,
+    pub content: String,
 }
 
 impl Actor for Server {
@@ -105,7 +107,23 @@ impl Handler<SendRecipient> for Server {
     type Result = ();
 
     fn handle(&mut self, msg: SendRecipient, ctx: &mut Context<Self>) {
+        if let Some(session) = self.sessions.get(&msg.uid) {
+            // user found on this server
+            session.do_send(session::TextMessage{
+                content: msg.content,
+                sender_id: msg.uid,
+            });
+        } else {
+            Arbiter::spawn(self.net.send(GetNodeAddr(msg.uid.clone()))
+                           .then(|res| {
+                               let node = res.unwrap().unwrap();
+                               node.do_send(DistributeMessage(msg));
 
+                               futures::future::ok(())
+                           }));
+            return;
+
+        }
     }
 }
 
@@ -113,7 +131,31 @@ impl Handler<SendRoom> for Server {
     type Result = ();
 
     fn handle(&mut self, msg: SendRoom, ctx: &mut Context<Self>) {
+        if let Some(ref mut sessions) = self.rooms.get_mut(&msg.room_id) {
+            for uid in sessions.iter() {
+                if *uid != msg.uid {
+                    ctx.notify(SendRecipient{
+                        recipient_id: uid.clone(),
+                        uid: msg.uid.clone(),
+                        content: msg.content.clone(),
+                    });
+                }
+            }
+        } else {
+            let ring = self.ring.read().unwrap();
+            let node_id = ring.get_node(msg.room_id.clone()).unwrap();
 
+            if *node_id != self.node_id {
+                Arbiter::spawn(self.net.send(GetNodeAddr(msg.uid.clone()))
+                               .then(|res| {
+                                   let node = res.unwrap().unwrap();
+                                   node.do_send(DistributeMessage(msg));
+
+                                   futures::future::ok(())
+                               }));
+                println!("Distributing message to node {}", node_id);
+            }
+        }
     }
 }
 
