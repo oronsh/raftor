@@ -26,6 +26,7 @@ pub enum ServerTypes {
     SendRecipient,
     SendRoom,
     CreateRoom,
+    GetMembers,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

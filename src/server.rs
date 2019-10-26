@@ -194,3 +194,37 @@ impl Handler<CreateRoom> for Server {
         }
     }
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetMembers {
+    pub room_id: String,
+}
+
+impl Message for GetMembers {
+    type Result = Result<Vec<String>, ()>;
+}
+
+impl Handler<GetMembers> for Server {
+    type Result = Response<Vec<String>, ()>;
+
+    fn handle(&mut self, msg: GetMembers, ctx: &mut Context<Self>) -> Self::Result {
+        if let Some(ref mut sessions) = self.rooms.get_mut(&msg.room_id) {
+            let mut members: Vec<String> = Vec::new();
+
+            for uid in sessions.iter() {
+                members.push(uid.to_string());
+            }
+
+            Response::reply(Ok(members))
+        } else {
+            Response::fut(self.net.send(GetNodeAddr(msg.room_id.clone()))
+                          .map_err(|_| ())
+                          .then(|res| {
+                              let node = res.unwrap().unwrap();
+                              node.send(DistributeMessage(msg))
+                                  .map_err(|_| ())
+                                  .map(|res| res.unwrap())
+                          }))
+        }
+    }
+}

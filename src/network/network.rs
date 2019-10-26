@@ -249,6 +249,14 @@ impl Handler<SendToServer> for Network {
                     });
                     Response::fut(future)
                 },
+                ServerTypes::GetMembers => {
+                    let msg = serde_json::from_slice::<server::GetMembers>(body.as_ref()).unwrap();
+                    let future = server.send(msg).map_err(|_| ()).and_then(|res| {
+                        let res_payload = serde_json::to_string(&res).unwrap();
+                        futures::future::ok(res_payload)
+                    });
+                    Response::fut(future)
+                },
                 _ => Response::reply(Ok("".to_owned())),
             }
         } else {

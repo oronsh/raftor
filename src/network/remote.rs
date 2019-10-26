@@ -137,3 +137,7 @@ impl RemoteMessage for server::SendRecipient {
 impl RemoteMessage for server::CreateRoom {
     fn type_id() -> MsgTypes { MsgTypes::AppMessage(ServerTypes::CreateRoom) }
 }
+
+impl RemoteMessage for server::GetMembers {
+    fn type_id() -> MsgTypes { MsgTypes::AppMessage(ServerTypes::GetMembers) }
+}

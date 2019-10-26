@@ -34,6 +34,21 @@ fn index_route(
         })
 }
 
+fn members_route(
+    req: HttpRequest,
+    stream: web::Payload,
+    srv: web::Data<Arc<ServerData>>,
+) -> impl Future<Item = HttpResponse, Error = Error> {
+    let room_id = req.match_info().get("room_id").unwrap_or("");
+
+    srv.server.send(server::GetMembers{ room_id: room_id.to_owned() })
+    .map_err(Error::from)
+        .and_then(|res| {
+            Ok(HttpResponse::Ok().json(res))
+        })
+}
+
+
 fn room_route(
     req: HttpRequest,
     stream: web::Payload,
@@ -123,6 +138,7 @@ fn main() {
             })))
             .service(web::resource("/node/{uid}").to_async(index_route))
             .service(web::resource("/room/{room_id}/{uid}").to_async(room_route))
+            .service(web::resource("/members/{room_id}").to_async(members_route))
             .service(web::resource("/ws/{uid}").to_async(ws_route))
         // static resources
             .service(fs::Files::new("/static/", "static/"))

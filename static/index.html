@@ -66,9 +66,10 @@
        $('#send').click(function() {
          var text = $('#text').val();
          var payload = {
-           room: null,
-           recipient: "balblabla",
-           content: text
+           content: text,
+           cmd: {
+             Join: ["Main"]
+           }
          };
 
          payload = JSON.stringify(payload);
