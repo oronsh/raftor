@@ -54,10 +54,9 @@ fn room_route(
     stream: web::Payload,
     srv: web::Data<Arc<ServerData>>,
 ) -> HttpResponse {
-    let uid = req.match_info().get("uid").unwrap_or("");
     let room_id = req.match_info().get("room_id").unwrap_or("");
 
-    srv.server.do_send(server::CreateRoom{ room_id: room_id.to_owned(), uid: uid.to_owned() });
+    srv.server.do_send(server::CreateRoom{ room_id: room_id.to_owned() });
     HttpResponse::Ok().body("room created")
 }
 
@@ -137,7 +136,7 @@ fn main() {
                     .finish()
             })))
             .service(web::resource("/node/{uid}").to_async(index_route))
-            .service(web::resource("/room/{room_id}/{uid}").to_async(room_route))
+            .service(web::resource("/room/{room_id}").to_async(room_route))
             .service(web::resource("/members/{room_id}").to_async(members_route))
             .service(web::resource("/ws/{uid}").to_async(ws_route))
         // static resources

@@ -6,7 +6,7 @@
     </script>
     <script language="javascript" type="text/javascript">
      $(function() {
-       var UID = 'oron';
+       var UID = '';
 
        var conn = null;
        function log(msg) {
@@ -14,14 +14,33 @@
          control.html(control.html() + msg + '<br/>');
          control.scrollTop(control.scrollTop() + 1000);
        }
+
+       document.getElementById('user').addEventListener('keypress', () => {
+         let text = document.getElementById('user').value;
+         UID = text;
+       });
+
        function connect(uid, url) {
          disconnect();
          var wsUri = (window.location.protocol=='https:'&&'wss://'||'ws://')+ url + '/ws/' + UID;
          console.log(wsUri);
          conn = new WebSocket(wsUri);
+
          log('Connecting...');
          conn.onopen = function() {
+
+           var payload = {
+             content: "test",
+             cmd: {
+               Join: "Main"
+             }
+           };
+
+           payload = JSON.stringify(payload);
+
+           conn.send(payload);
            log('Connected.');
+           get_members();
            update_ui();
          };
          conn.onmessage = function(e) {
@@ -41,6 +60,14 @@
            update_ui();
          }
        }
+
+       function get_members() {
+         $.get('http://localhost:8080/members/Main', (res) => {
+           let members = res.Ok.map((m) => '<div><a href="#'+m+'">'+m+'</a></div>').join('');
+           document.getElementById('members').innerHTML = members;
+         });
+       }
+
        function update_ui() {
          var msg = '';
          if (conn == null) {
@@ -68,7 +95,7 @@
          var payload = {
            content: text,
            cmd: {
-             Join: ["Main"]
+             SendRoom: "Main"
            }
          };
 
@@ -91,9 +118,15 @@
   <body>
     <h3>Chat!</h3>
     <div>
+      Username<input type="text" id="user">
       <button id="connect">Connect</button>&nbsp;|&nbsp;Status:
       <span id="status">disconnected</span>
     </div>
+    <div style="float:left; width:150px; min-height:400px;">
+      <h4>Members</h4>
+      <div id="members"></div>
+    </div>
+    <div style="float:left;">
     <div id="log"
          style="width:20em;height:15em;overflow:auto;border:1px solid black">
     </div>
@@ -101,5 +134,7 @@
       <input id="text" type="text" />
       <input id="send" type="button" value="Send" />
     </form>
+    </div>
+    <div style="clear:both;">
   </body>
 </html>

@@ -92,7 +92,8 @@ impl Handler<Join> for Server {
         if let Some(ref mut room) = self.rooms.get_mut(&msg.room_id) {
             room.insert(msg.uid);
         } else {
-            Arbiter::spawn(self.net.send(GetNodeAddr(msg.uid.clone()))
+
+            Arbiter::spawn(self.net.send(GetNodeAddr(msg.room_id.clone()))
                            .then(|res| {
                                let node = res.unwrap().unwrap();
                                node.do_send(DistributeMessage(msg));
@@ -107,7 +108,7 @@ impl Handler<SendRecipient> for Server {
     type Result = ();
 
     fn handle(&mut self, msg: SendRecipient, ctx: &mut Context<Self>) {
-        if let Some(session) = self.sessions.get(&msg.uid) {
+        if let Some(session) = self.sessions.get(&msg.recipient_id) {
             // user found on this server
             session.do_send(session::TextMessage{
                 content: msg.content,
@@ -146,7 +147,7 @@ impl Handler<SendRoom> for Server {
             let node_id = ring.get_node(msg.room_id.clone()).unwrap();
 
             if *node_id != self.node_id {
-                Arbiter::spawn(self.net.send(GetNodeAddr(msg.uid.clone()))
+                Arbiter::spawn(self.net.send(GetNodeAddr(msg.room_id.clone()))
                                .then(|res| {
                                    let node = res.unwrap().unwrap();
                                    node.do_send(DistributeMessage(msg));
@@ -162,7 +163,6 @@ impl Handler<SendRoom> for Server {
 #[derive(Message, Serialize, Deserialize, Debug)]
 pub struct CreateRoom {
     pub room_id: String,
-    pub uid: String,
 }
 
 impl Handler<CreateRoom> for Server {
@@ -173,7 +173,7 @@ impl Handler<CreateRoom> for Server {
         let node_id = ring.get_node(msg.room_id.clone()).unwrap();
 
         if *node_id != self.node_id {
-            Arbiter::spawn(self.net.send(GetNodeAddr(msg.uid.clone()))
+            Arbiter::spawn(self.net.send(GetNodeAddr(msg.room_id.clone()))
                            .then(|res| {
                                let node = res.unwrap().unwrap();
                                node.do_send(DistributeMessage(msg));
@@ -187,9 +187,7 @@ impl Handler<CreateRoom> for Server {
         if let Some(ref mut room) = self.rooms.get_mut(&msg.room_id) {
             return;
         } else {
-            let mut users = HashSet::new();
-            users.insert(msg.uid);
-            self.rooms.insert(msg.room_id.clone(), users);
+            self.rooms.insert(msg.room_id.clone(), HashSet::new());
             println!("Room {} created", msg.room_id);
         }
     }
