@@ -103,15 +103,6 @@ fn main() {
     // listen on ip and port
     net.listen(local_address);
 
-    // register peers
-    let peers = vec![
-        "127.0.0.1:8000",
-        "127.0.0.1:8001",
-        "127.0.0.1:8002",
-    ];
-
-    net.peers(peers);
-
     let net_addr = net.start();
     let server = Server::new(net_addr.clone(), ring.clone(), node_id).start();
     net_addr.do_send(SetServer(server.clone()));

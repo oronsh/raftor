@@ -9,4 +9,5 @@ TODO:
 - [X] Verify raft is working and replicating state across cluster
 - [X] Refactor hash_ring to Arc in order to reduce complexity
 - [ ] Error handling
-- [ ] Fix rejoin bug
+- [X] Fix rejoin bug
+- [ ] Rehash entities when hash ring topology changes

@@ -6,12 +6,16 @@ use std::time::{Duration, Instant};
 use tokio::timer::Delay;
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::network::{Listener, MsgTypes, ServerTypes, Node, NodeSession, remote::{SendRaftMessage}};
+use crate::network::{Listener, MsgTypes, ServerTypes, Node, NodeSession, remote::{SendRaftMessage},
+                     RemoteMessageHandler,
+                     Provider,
+};
 use crate::raft::{storage, RaftNode};
 use crate::utils::generate_node_id;
 use crate::config::{ConfigSchema, NodeList, NodeInfo};
 use crate::server;
 use crate::hash_ring::RingType;
+
 
 pub type Payload = messages::ClientPayload<storage::MemoryStorageData, storage::MemoryStorageResponse, storage::MemoryStorageError>;
 
@@ -35,6 +39,7 @@ pub struct Network {
     pub metrics: Option<RaftMetrics>,
     sessions: HashMap<NodeId, Addr<NodeSession>>,
     ring: RingType,
+    handlers: HashMap<MsgTypes, Arc<RemoteMessageHandler>>,
 }
 
 impl Network {
@@ -62,13 +67,8 @@ impl Network {
         for node in nodes.iter() {
             let id = generate_node_id(node.private_addr.as_str());
             self.nodes_info.insert(id, node.clone());
-        }
-    }
-
-    /// set peers
-    pub fn peers(&mut self, peers: Vec<&str>) {
-        for peer in peers.iter() {
-            self.peers.push(peer.to_string());
+            // register peers
+            self.peers.push(node.private_addr.clone());
         }
     }
 
