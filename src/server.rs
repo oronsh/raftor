@@ -115,7 +115,7 @@ impl Handler<SendRecipient> for Server {
                 sender_id: msg.uid,
             });
         } else {
-            Arbiter::spawn(self.net.send(GetNodeAddr(msg.uid.clone()))
+            Arbiter::spawn(self.net.send(GetNodeAddr(msg.recipient_id.clone()))
                            .then(|res| {
                                let node = res.unwrap().unwrap();
                                node.do_send(DistributeMessage(msg));
@@ -145,7 +145,6 @@ impl Handler<SendRoom> for Server {
         } else {
             let ring = self.ring.read().unwrap();
             let node_id = ring.get_node(msg.room_id.clone()).unwrap();
-
             if *node_id != self.node_id {
                 Arbiter::spawn(self.net.send(GetNodeAddr(msg.room_id.clone()))
                                .then(|res| {
