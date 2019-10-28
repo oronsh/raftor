@@ -116,7 +116,7 @@ impl Handler<TextMessage> for Session {
     type Result = ();
 
     fn handle(&mut self, msg: TextMessage, ctx: &mut Self::Context) {
-        let payload = serde_json::to_string(&msg).unwrap();
+        let payload = serde_json::to_string(&msg).unwrap_or("no output".to_owned());
         ctx.text(payload);
     }
 }

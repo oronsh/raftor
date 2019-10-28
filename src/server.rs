@@ -74,6 +74,7 @@ impl Handler<Disconnect> for Server {
 
     fn handle(&mut self, msg: Disconnect, ctx: &mut Context<Self>) {
         self.sessions.remove(&msg.0);
+        println!("members: {:?}", self.sessions.keys());
     }
 }
 
@@ -108,13 +109,16 @@ impl Handler<SendRecipient> for Server {
     type Result = ();
 
     fn handle(&mut self, msg: SendRecipient, ctx: &mut Context<Self>) {
+        let ring = self.ring.read().unwrap();
+        let node_id = ring.get_node(msg.recipient_id.clone()).unwrap();
+
         if let Some(session) = self.sessions.get(&msg.recipient_id) {
             // user found on this server
             session.do_send(session::TextMessage{
                 content: msg.content,
                 sender_id: msg.uid,
             });
-        } else {
+        } else if (*node_id != self.node_id) {
             Arbiter::spawn(self.net.send(GetNodeAddr(msg.recipient_id.clone()))
                            .then(|res| {
                                let node = res.unwrap().unwrap();
@@ -220,7 +224,7 @@ impl Handler<GetMembers> for Server {
                               let node = res.unwrap().unwrap();
                               node.send(DistributeMessage(msg))
                                   .map_err(|_| ())
-                                  .map(|res| res.unwrap())
+                                  .map(|res| res.unwrap_or(Vec::new()))
                           }))
         }
     }

@@ -167,8 +167,9 @@ impl Handler<GetNodeAddr> for Network {
         .and_then(|res, act, _| {
             if let Ok(info) = res {
                 let id = info.0;
-
+                println!("id: {:?} nodes {:?}", id, act.nodes.keys());
                 let node = act.nodes.get(&id).unwrap();
+
                 fut::result(Ok(node.clone()))
             } else {
                 fut::result(Err(()))
