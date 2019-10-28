@@ -1,16 +1,21 @@
 use actix::prelude::*;
-use actix_raft::{admin::InitWithConfig, messages, NodeId, RaftMetrics};
+use actix_raft::{
+    admin::InitWithConfig, messages, NodeId, RaftMetrics,
+    Raft,
+};
 use log::debug;
 use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, Instant};
 use tokio::timer::Delay;
 use serde::{de::DeserializeOwned, Serialize};
+use std::sync::Arc;
 
-use crate::network::{Listener, MsgTypes, ServerTypes, Node, NodeSession, remote::{SendRaftMessage},
+use crate::network::{Listener, MsgTypes, Node, NodeSession, remote::{SendRaftMessage, RemoteMessage},
                      RemoteMessageHandler,
                      Provider,
 };
-use crate::raft::{storage, RaftNode};
+
+use crate::raft::{storage::{self, *}, RaftNode, MemRaft};
 use crate::utils::generate_node_id;
 use crate::config::{ConfigSchema, NodeList, NodeInfo};
 use crate::server;
@@ -39,7 +44,7 @@ pub struct Network {
     pub metrics: Option<RaftMetrics>,
     sessions: HashMap<NodeId, Addr<NodeSession>>,
     ring: RingType,
-    handlers: HashMap<MsgTypes, Arc<RemoteMessageHandler>>,
+    handlers: HashMap<&'static str, Arc<dyn RemoteMessageHandler>>,
 }
 
 impl Network {
@@ -58,6 +63,7 @@ impl Network {
             metrics: None,
             sessions: HashMap::new(),
             ring: ring,
+            handlers: HashMap::new(),
         }
     }
 
@@ -69,6 +75,17 @@ impl Network {
             self.nodes_info.insert(id, node.clone());
             // register peers
             self.peers.push(node.private_addr.clone());
+        }
+    }
+
+    pub fn register_handler<M>(&mut self, m: M)
+    where
+        M: RemoteMessage + 'static, M::Result: Send + Serialize + DeserializeOwned,
+        MemRaft: Handler<M>
+    {
+        if let Some(ref mut raft) = self.raft {
+            let recipient = raft.addr.clone().recipient::<M>();
+            self.handlers.insert(M::type_id(), Arc::new(Provider{recipient}));
         }
     }
 
@@ -203,7 +220,7 @@ impl Handler<GetNode> for Network {
     }
 }
 
-pub struct SendToServer(pub ServerTypes, pub String);
+pub struct SendToServer(pub String);
 
 impl Message for SendToServer {
     type Result = Result<String, ()>;
@@ -213,10 +230,12 @@ impl Handler<SendToServer> for Network {
     type Result = Response<String, ()>;
 
     fn handle(&mut self, msg: SendToServer, _ctx: &mut Context<Self>) -> Self::Result {
-        let type_id = msg.0;
-        let body = msg.1;
+        let body = msg.0;
 
-        let res = if let Some(ref mut server) = self.server {
+        let res = Response::reply(Ok("".to_owned()));
+        /*
+            if let Some(ref mut server) = self.server {
+
             match type_id {
                 ServerTypes::Join => {
                     let msg = serde_json::from_slice::<server::Join>(body.as_ref()).unwrap();
@@ -264,11 +283,13 @@ impl Handler<SendToServer> for Network {
             Response::reply(Ok("".to_owned()))
         };
 
+             */
+
         res
     }
 }
 
-pub struct SendToRaft(pub MsgTypes, pub String);
+pub struct SendToRaft(pub String, pub String);
 
 impl Message for SendToRaft {
     type Result = Result<String, ()>;
@@ -280,7 +301,8 @@ impl Handler<SendToRaft> for Network {
     fn handle(&mut self, msg: SendToRaft, _ctx: &mut Context<Self>) -> Self::Result {
         let type_id = msg.0;
         let body = msg.1;
-
+        let res = Response::reply(Ok("".to_owned()));
+        /*
         let res = if let Some(ref mut raft) = self.raft {
             match type_id {
                 MsgTypes::AppendEntriesRequest => {
@@ -331,7 +353,7 @@ impl Handler<SendToRaft> for Network {
         } else {
             Response::reply(Ok("".to_owned()))
         };
-
+        */
         res
     }
 }

@@ -11,13 +11,14 @@ use actix_raft::{
     messages,
 };
 
-use crate::network::{Node, MsgTypes, ServerTypes};
+use crate::network::{Node, MsgTypes};
 use crate::raft::MemRaft;
 use crate::server;
 
 pub trait RemoteMessage: Message + Send + Serialize + DeserializeOwned
 where Self::Result: Send + Serialize + DeserializeOwned {
-    fn type_id() -> MsgTypes;
+    fn type_id() -> &'static str;
+    fn msg_type() -> MsgTypes;
 }
 
 pub struct RemoteMessageResult<M>
@@ -106,38 +107,47 @@ pub struct RegisterHandler(pub Addr<MemRaft>);
 
 /// Impl RemoteMessage for RaftNetwork messages
 impl<D: AppData> RemoteMessage for messages::AppendEntriesRequest<D> {
-    fn type_id() -> MsgTypes { MsgTypes::AppendEntriesRequest }
+    fn type_id() -> &'static str { "AppendEntriesRequest" }
+    fn msg_type() -> MsgTypes { MsgTypes::Raft }
 }
 
 impl RemoteMessage for messages::VoteRequest {
-    fn type_id() -> MsgTypes { MsgTypes::VoteRequest }
+    fn type_id() -> &'static str { "VoteRequest" }
+    fn msg_type() -> MsgTypes { MsgTypes::Raft }
 }
 
 impl RemoteMessage for messages::InstallSnapshotRequest {
-    fn type_id() -> MsgTypes { MsgTypes::InstallSnapshotRequest }
+    fn type_id() -> &'static str { "InstallSnapshotRequest" }
+    fn msg_type() -> MsgTypes { MsgTypes::Raft }
 }
 
 impl<D: AppData, R: AppDataResponse, E: AppError> RemoteMessage for messages::ClientPayload<D, R, E> {
-    fn type_id() -> MsgTypes { MsgTypes::ClientPayload }
+    fn type_id() -> &'static str { "ClientPayload" }
+    fn msg_type() -> MsgTypes { MsgTypes::Raft }
 }
 
 /// Impl RemoteMessage for Application Messages
 impl RemoteMessage for server::Join {
-    fn type_id() -> MsgTypes { MsgTypes::AppMessage(ServerTypes::Join) }
+    fn type_id() -> &'static str { "Join" }
+    fn msg_type() -> MsgTypes { MsgTypes::App }
 }
 
 impl RemoteMessage for server::SendRoom {
-    fn type_id() -> MsgTypes { MsgTypes::AppMessage(ServerTypes::SendRoom) }
+    fn type_id() -> &'static str { "SendRoom" }
+    fn msg_type() -> MsgTypes { MsgTypes::App }
 }
 
 impl RemoteMessage for server::SendRecipient {
-    fn type_id() -> MsgTypes { MsgTypes::AppMessage(ServerTypes::SendRecipient) }
+    fn type_id() -> &'static str { "SendRecipient" }
+    fn msg_type() -> MsgTypes { MsgTypes::App }
 }
 
 impl RemoteMessage for server::CreateRoom {
-    fn type_id() -> MsgTypes { MsgTypes::AppMessage(ServerTypes::CreateRoom) }
+    fn type_id() -> &'static str { "CreateRoom" }
+    fn msg_type() -> MsgTypes { MsgTypes::App }
 }
 
 impl RemoteMessage for server::GetMembers {
-    fn type_id() -> MsgTypes { MsgTypes::AppMessage(ServerTypes::GetMembers) }
+    fn type_id() -> &'static str { "GetMembers" }
+    fn msg_type() -> MsgTypes { MsgTypes::App }
 }

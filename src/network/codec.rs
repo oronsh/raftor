@@ -4,13 +4,14 @@ use tokio::codec::{Decoder, Encoder};
 use serde::{Serialize, Deserialize};
 use serde_json as json;
 use actix_raft::{NodeId};
+use std::cmp::PartialEq;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum NodeRequest {
     Ping,
     Join(NodeId),
-    /// Message(msg_id, type_id, payload)
-    Message(u64, MsgTypes, String),
+    /// Message(msg_id, type_id, MsgTypes, payload)
+    Message(u64, String, MsgTypes, String),
 }
 #[derive(Serialize, Deserialize, Debug)]
 pub enum NodeResponse {
@@ -20,22 +21,10 @@ pub enum NodeResponse {
     Result(u64, String),
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub enum ServerTypes {
-    Join,
-    SendRecipient,
-    SendRoom,
-    CreateRoom,
-    GetMembers,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Hash, PartialEq)]
 pub enum MsgTypes {
-    AppendEntriesRequest,
-    VoteRequest,
-    InstallSnapshotRequest,
-    ClientPayload,
-    AppMessage(ServerTypes),
+    Raft,
+    App,
 }
 
 pub struct NodeCodec;

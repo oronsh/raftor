@@ -14,7 +14,6 @@ use crate::network::{
     PeerConnected,
     SendToRaft,
     MsgTypes,
-    ServerTypes,
     SendToServer,
 };
 
@@ -116,10 +115,10 @@ impl StreamHandler<NodeRequest, std::io::Error> for NodeSession {
                 self.id = Some(id);
                 // self.network.do_send(PeerConnected(id));
             },
-            NodeRequest::Message(mid, type_id, body) => {
-                match type_id {
-                    MsgTypes::AppMessage(server_type) => {
-                        let task = actix::fut::wrap_future(self.network.send(SendToServer(server_type, body)))
+            NodeRequest::Message(mid, type_id, msg_type, body) => {
+                match msg_type {
+                    MsgTypes::App => {
+                        let task = actix::fut::wrap_future(self.network.send(SendToServer(body)))
                             .map_err(|err, _: &mut NodeSession, _| {
                                 error!("{:?}", err);
                             })

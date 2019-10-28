@@ -138,7 +138,7 @@ where M: RemoteMessage + 'static,
             self.requests.insert(self.mid, tx);
 
             let body = serde_json::to_string::<M>(&msg.0).unwrap();
-            let request = NodeRequest::Message(self.mid, M::type_id(), body);
+            let request = NodeRequest::Message(self.mid, M::type_id().to_owned(), M::msg_type(), body);
             framed.write(request);
         }
 
@@ -160,7 +160,7 @@ where M: RemoteMessage + 'static,
             self.requests.insert(self.mid, tx);
 
             let body = serde_json::to_string::<M>(&msg.0).unwrap();
-            let request = NodeRequest::Message(self.mid, M::type_id(), body);
+            let request = NodeRequest::Message(self.mid, M::type_id().to_owned(), M::msg_type(), body);
             framed.write(request);
         }
 

@@ -1,5 +1,6 @@
 use actix::prelude::*;
 use serde::{de::DeserializeOwned, Serialize};
+use tokio::sync::oneshot::{Sender};
 
 use crate::network::{
     remote::{
@@ -12,7 +13,7 @@ pub trait RemoteMessageHandler: Send {
 }
 
 /// Remote message handler
-pub(crate) struct Provider<M>
+pub struct Provider<M>
     where M: RemoteMessage + 'static,
           M::Result: Send + Serialize + DeserializeOwned
 {
@@ -24,7 +25,7 @@ impl<M> RemoteMessageHandler for Provider<M>
 {
     fn handle(&self, msg: String, sender: Sender<String>) {
         let msg = serde_json::from_slice::<M>(msg.as_ref()).unwrap();
-        Arbiter::handle().spawn(
+        Arbiter::spawn(
             self.recipient.send(msg).then(|res| {
                 match res {
                     Ok(res) => {
