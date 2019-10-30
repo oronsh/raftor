@@ -20,17 +20,10 @@ use self::storage::{MemoryStorageData, MemoryStorageError, MemoryStorage, Memory
 
 pub type MemRaft = Raft<MemoryStorageData, MemoryStorageResponse, MemoryStorageError, Network, MemoryStorage>;
 
-pub struct RaftNode {
-    id: NodeId,
-    pub addr: Addr<MemRaft>,
-    members: Vec<NodeId>,
-    network: Addr<Network>,
-    leader: Option<NodeId>,
-    storage: Addr<MemoryStorage>,
-}
+pub struct RaftBuilder;
 
-impl RaftNode {
-    pub fn new(id: NodeId, members: Vec<NodeId>, network: Addr<Network>, ring: RingType) -> RaftNode {
+impl RaftBuilder {
+    pub fn new(id: NodeId, members: Vec<NodeId>, network: Addr<Network>, ring: RingType) -> Addr<MemRaft> {
         let id = id;
         let raft_members = members.clone();
         let metrics_rate = 1;
@@ -46,24 +39,15 @@ impl RaftNode {
 
         let raft_network = network.clone();
         let raft_storage = storage.clone();
-        let addr = Raft::create(move |_| {
-            Raft::new(id, config, raft_network.clone(), raft_storage, raft_network.recipient())
-        });
 
-        RaftNode {
-            id: id,
-            addr: addr,
-            members: members,
-            network: network,
-            leader: None,
-            storage: storage.clone(),
-        }
-    }
-}
-
-
-impl RaftNode {
-    pub fn get_node(&mut self, node_id: &str) -> impl Future<Item = Result<NodeId, ()>, Error = actix::MailboxError> {
-         self.storage.send(storage::GetNode(node_id.to_string()))
+        Raft::create(move |_| {
+            Raft::new(
+                id,
+                config,
+                raft_network.clone(),
+                raft_storage,
+                raft_network.recipient()
+            )
+        })
     }
 }

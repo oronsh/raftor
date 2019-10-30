@@ -1,3 +1,6 @@
+max_discovery_timeout = 5
+max_raft_init_timeout = 5
+
 [[nodes]]
 private_addr = "127.0.0.1:8000"
 public_addr = "127.0.0.1:8080"

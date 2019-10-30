@@ -101,7 +101,7 @@ fn main() {
 
     net.configure(config);
     // listen on ip and port
-    net.listen(local_address);
+    net.bind(local_address);
 
     let net_addr = net.start();
     let server = Server::new(net_addr.clone(), ring.clone(), node_id).start();

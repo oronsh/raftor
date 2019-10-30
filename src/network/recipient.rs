@@ -1,6 +1,7 @@
 use actix::prelude::*;
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::sync::oneshot::{Sender};
+use std::collections::{HashMap};
 
 use crate::network::{
     remote::{
@@ -37,4 +38,11 @@ impl<M> RemoteMessageHandler for Provider<M>
                 Ok::<_, ()>(())
             }))
     }
+}
+
+pub struct Handlers<M>
+where M: RemoteMessage + 'static,
+      M::Result: Send + Serialize + DeserializeOwned
+{
+    handlers: HashMap<&'static str, Provider<M>>
 }

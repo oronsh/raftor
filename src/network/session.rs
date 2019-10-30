@@ -19,47 +19,6 @@ use crate::network::{
 
 use crate::server;
 
-pub struct Listener {
-    network: Addr<Network>,
-}
-
-impl Listener {
-    pub fn new(address: &str, network_addr: Addr<Network>) -> Addr<Listener> {
-        let server_addr = address.parse().unwrap();
-        let listener = TcpListener::bind(&server_addr).unwrap();
-
-        Listener::create(|ctx| {
-            ctx.add_message_stream(listener.incoming().map_err(|_| ()).map(NodeConnect));
-
-            Listener {
-                network: network_addr,
-            }
-        })
-    }
-}
-
-impl Actor for Listener {
-    type Context = Context<Self>;
-}
-
-#[derive(Message)]
-struct NodeConnect(TcpStream);
-
-impl Handler<NodeConnect> for Listener {
-    type Result = ();
-
-    fn handle(&mut self, msg: NodeConnect, _: &mut Context<Self>) {
-        let (r, w) = msg.0.split();
-        let network = self.network.clone();
-
-        NodeSession::create(move |ctx| {
-            NodeSession::add_stream(FramedRead::new(r, NodeCodec), ctx);
-            NodeSession::new(actix::io::FramedWrite::new(w, NodeCodec, ctx), network)
-        });
-    }
-}
-
-
 // NodeSession
 pub struct NodeSession {
     hb: Instant,
@@ -69,7 +28,7 @@ pub struct NodeSession {
 }
 
 impl NodeSession {
-    fn new(
+    pub fn new(
         framed: actix::io::FramedWrite<WriteHalf<TcpStream>, NodeCodec>,
         network: Addr<Network>,
     ) -> NodeSession {

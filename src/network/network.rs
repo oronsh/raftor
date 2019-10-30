@@ -9,13 +9,19 @@ use std::time::{Duration, Instant};
 use tokio::timer::Delay;
 use serde::{de::DeserializeOwned, Serialize};
 use std::sync::Arc;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::codec::FramedRead;
+use tokio::io::{AsyncRead, WriteHalf};
 
-use crate::network::{Listener, MsgTypes, Node, NodeSession, remote::{SendRaftMessage, RemoteMessage},
+use crate::network::{MsgTypes, Node, NodeSession, remote::{SendRaftMessage, RemoteMessage},
+                     NodeCodec,
+                     NodeRequest,
+                     NodeResponse,
                      RemoteMessageHandler,
                      Provider,
 };
 
-use crate::raft::{storage::{self, *}, RaftNode, MemRaft};
+use crate::raft::{storage::{self, *}, MemRaft};
 use crate::utils::generate_node_id;
 use crate::config::{ConfigSchema, NodeList, NodeInfo};
 use crate::server;
@@ -33,13 +39,11 @@ pub enum NetworkState {
 pub struct Network {
     id: NodeId,
     address: Option<String>,
-    raft: Option<RaftNode>,
     peers: Vec<String>,
     nodes: HashMap<NodeId, Addr<Node>>,
     nodes_connected: Vec<NodeId>,
     nodes_info: HashMap<NodeId, NodeInfo>,
     server: Option<Addr<server::Server>>,
-    listener: Option<Addr<Listener>>,
     state: NetworkState,
     pub metrics: Option<RaftMetrics>,
     sessions: HashMap<NodeId, Addr<NodeSession>>,
@@ -54,8 +58,6 @@ impl Network {
             address: None,
             peers: Vec::new(),
             nodes: HashMap::new(),
-            raft: None,
-            listener: None,
             nodes_connected: Vec::new(),
             nodes_info: HashMap::new(),
             server: None,
@@ -78,17 +80,6 @@ impl Network {
         }
     }
 
-    pub fn register_handler<M>(&mut self, m: M)
-    where
-        M: RemoteMessage + 'static, M::Result: Send + Serialize + DeserializeOwned,
-        MemRaft: Handler<M>
-    {
-        if let Some(ref mut raft) = self.raft {
-            let recipient = raft.addr.clone().recipient::<M>();
-            self.handlers.insert(M::type_id(), Arc::new(Provider{recipient}));
-        }
-    }
-
     /// register a new node to the network
     pub fn register_node(&mut self, peer_addr: &str, addr: Addr<Self>) {
         let id = generate_node_id(peer_addr);
@@ -106,7 +97,7 @@ impl Network {
         self.nodes.get(&id)
     }
 
-    pub fn listen(&mut self, address: &str) {
+    pub fn bind(&mut self, address: &str) {
         self.address = Some(address.to_owned());
         self.id = generate_node_id(address);
     }
@@ -121,8 +112,7 @@ impl Actor for Network {
         println!("Listening on {}", network_address);
         println!("Local node id: {}", self.id);
 
-        let listener_addr = Listener::new(network_address.as_str(), ctx.address().clone());
-        self.listener = Some(listener_addr);
+        self.listen(ctx);
         self.nodes_connected.push(self.id);
 
         let peers = self.peers.clone();
@@ -131,7 +121,7 @@ impl Actor for Network {
                 self.register_node(peer.as_str(), ctx.address().clone());
             }
         }
-
+        /*
         ctx.run_later(Duration::new(10, 0), |act, ctx| {
             let num_nodes = act.nodes_connected.len();
 
@@ -165,6 +155,37 @@ impl Actor for Network {
                 println!("Starting in single node mode");
                 act.state = NetworkState::SingleNode;
             }
+        });
+         */
+    }
+}
+
+#[derive(Message)]
+struct NodeConnect(TcpStream);
+
+impl Network {
+    fn listen(&mut self, ctx: &mut Context<Self>) {
+        let server_addr = self.address.as_ref().unwrap().as_str().parse().unwrap();
+        let listener = TcpListener::bind(&server_addr).unwrap();
+
+        ctx.add_message_stream(
+            listener.incoming()
+                .map_err(|_| ())
+                .map(NodeConnect)
+        );
+    }
+}
+
+impl Handler<NodeConnect> for Network {
+    type Result = ();
+
+    fn handle(&mut self, msg: NodeConnect, ctx: &mut Context<Self>) {
+        let (r, w) = msg.0.split();
+        let addr = ctx.address();
+
+        NodeSession::create(move |ctx| {
+            NodeSession::add_stream(FramedRead::new(r, NodeCodec), ctx);
+            NodeSession::new(actix::io::FramedWrite::new(w, NodeCodec, ctx), addr)
         });
     }
 }
@@ -373,7 +394,7 @@ impl Handler<PeerConnected> for Network {
 
 #[derive(Message)]
 pub struct InitRaft;
-
+/*
 impl Handler<InitRaft> for Network {
     type Result = ();
 
@@ -383,6 +404,7 @@ impl Handler<InitRaft> for Network {
         raft.addr.send(init_msg);
     }
 }
+ */
 
 pub struct GetCurrentLeader;
 
@@ -427,7 +449,7 @@ impl Handler<ClientRequest> for Network {
     type Result = ();
 
     fn handle(&mut self, msg: ClientRequest, ctx: &mut Context<Self>) {
-
+        /*
         let entry = messages::EntryNormal{data: storage::MemoryStorageData(msg.0)};
         let payload = Payload::new(entry, messages::ResponseMode::Applied);
 
@@ -497,6 +519,7 @@ impl Handler<ClientRequest> for Network {
             });
 
         ctx.spawn(req);
+*/
     }
 }
 
