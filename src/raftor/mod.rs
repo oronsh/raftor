@@ -2,10 +2,12 @@ use actix::prelude::*;
 use actix_raft::{NodeId};
 use config;
 use std::env;
+use std::sync::Arc;
 
 use crate::raft::{RaftBuilder, MemRaft};
 use crate::network::{
-    Network
+    Network,
+    HandlerRegistry,
 };
 use crate::hash_ring::{self, RingType};
 use crate::config::{ConfigSchema};
@@ -17,6 +19,7 @@ pub struct Raftor {
     raft: Addr<MemRaft>,
     server: Addr<Server>,
     ring: RingType,
+    registry: Arc<HandlerRegistry>,
 }
 
 impl Raftor {
@@ -33,6 +36,9 @@ impl Raftor {
         let ring = hash_ring::Ring::new(10);
 
         let sys = System::new("raftor");
+
+        // create handlers registry
+        let registry = Arc::new(HandlerRegistry::new());
 
         // create application network
         let mut net = Network::new(ring.clone());
@@ -53,6 +59,7 @@ impl Raftor {
 
         let server = Server::new(net_addr.clone(), ring.clone(), node_id);
         let server_addr = server.start();
+
     }
 }
 

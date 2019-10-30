@@ -10,8 +10,8 @@ use std::cmp::PartialEq;
 pub enum NodeRequest {
     Ping,
     Join(NodeId),
-    /// Message(msg_id, type_id, MsgTypes, payload)
-    Message(u64, String, MsgTypes, String),
+    /// Message(msg_id, type_id, payload)
+    Message(u64, String, String),
 }
 #[derive(Serialize, Deserialize, Debug)]
 pub enum NodeResponse {
@@ -19,12 +19,6 @@ pub enum NodeResponse {
     Joined,
     /// Result(msg_id, payload)
     Result(u64, String),
-}
-
-#[derive(Serialize, Deserialize, Debug, Hash, PartialEq)]
-pub enum MsgTypes {
-    Raft,
-    App,
 }
 
 pub struct NodeCodec;

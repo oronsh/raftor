@@ -13,7 +13,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::codec::FramedRead;
 use tokio::io::{AsyncRead, WriteHalf};
 
-use crate::network::{MsgTypes, Node, NodeSession, remote::{SendRaftMessage, RemoteMessage},
+use crate::network::{Node, NodeSession, remote::{SendRaftMessage, RemoteMessage},
                      NodeCodec,
                      NodeRequest,
                      NodeResponse,

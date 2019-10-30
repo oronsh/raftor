@@ -2,8 +2,10 @@ use actix::prelude::*;
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::sync::oneshot::{Sender};
 use std::collections::{HashMap};
+use std::sync::Arc;
 
 use crate::network::{
+    MsgTypes,
     remote::{
         RemoteMessage
     }
@@ -40,9 +42,25 @@ impl<M> RemoteMessageHandler for Provider<M>
     }
 }
 
-pub struct Handlers<M>
-where M: RemoteMessage + 'static,
-      M::Result: Send + Serialize + DeserializeOwned
-{
-    handlers: HashMap<&'static str, Provider<M>>
+pub struct HandlerRegistry {
+    handlers: HashMap<&'static str, Arc<dyn RemoteMessageHandler>>,
+}
+
+impl HandlerRegistry {
+    pub fn new() -> Self {
+        HandlerRegistry {
+            handlers: HashMap::new(),
+        }
+    }
+
+    pub fn register<M>(&mut self, r: Recipient<M>)
+    where M: RemoteMessage + 'static,
+          M::Result: Send + Serialize + DeserializeOwned
+    {
+        self.handlers.insert(M::type_id(), Arc::new(Provider{ recipient: r }));
+    }
+
+    pub fn get(&self, type_id: &'static str) -> Option<&Arc<dyn RemoteMessageHandler>> {
+        self.handlers.get(&type_id)
+    }
 }
