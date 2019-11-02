@@ -8,6 +8,7 @@ use crate::raft::{RaftBuilder, MemRaft};
 use crate::network::{
     Network,
     HandlerRegistry,
+    DiscoverNodes,
 };
 use crate::hash_ring::{self, RingType};
 use crate::config::{ConfigSchema};
@@ -41,7 +42,7 @@ impl Raftor {
         let registry = Arc::new(HandlerRegistry::new());
 
         // create application network
-        let mut net = Network::new(ring.clone());
+        let mut net = Network::new(ring.clone(), registry.clone());
 
         let args: Vec<String> = env::args().collect();
         let local_address = args[1].as_str();
@@ -59,7 +60,6 @@ impl Raftor {
 
         let server = Server::new(net_addr.clone(), ring.clone(), node_id);
         let server_addr = server.start();
-
     }
 }
 
@@ -67,4 +67,26 @@ impl Raftor {
     pub fn run() {
 
     }
+
+    fn start_raft(&mut self) {
+        self.net.send(DiscoverNodes)
+            .into_actor(self)
+            .and_then(|nodes, act, ctx| {
+                let nodes = nodes.unwrap_or(Vec::new());
+                let num_nodes = nodes.len();
+
+                if num_nodes > 1 {
+
+                } else {
+
+                }
+
+                fut::result(Ok(()))
+            });
+    }
+}
+
+
+impl Actor for Raftor {
+    type Context = Context<Self>;
 }

@@ -5,7 +5,6 @@ use std::collections::{HashMap};
 use std::sync::Arc;
 
 use crate::network::{
-    MsgTypes,
     remote::{
         RemoteMessage
     }
@@ -42,8 +41,10 @@ impl<M> RemoteMessageHandler for Provider<M>
     }
 }
 
+pub type Handlers = HashMap<&'static str, Arc<dyn RemoteMessageHandler>>;
+
 pub struct HandlerRegistry {
-    handlers: HashMap<&'static str, Arc<dyn RemoteMessageHandler>>,
+    handlers: Handlers,
 }
 
 impl HandlerRegistry {
@@ -60,7 +61,7 @@ impl HandlerRegistry {
         self.handlers.insert(M::type_id(), Arc::new(Provider{ recipient: r }));
     }
 
-    pub fn get(&self, type_id: &'static str) -> Option<&Arc<dyn RemoteMessageHandler>> {
-        self.handlers.get(&type_id)
+    pub fn get(&self, type_id: &str) -> Option<&Arc<dyn RemoteMessageHandler>> {
+        self.handlers.get(type_id)
     }
 }

@@ -80,6 +80,7 @@ struct ServerData {
 }
 
 fn main() {
+    /*
     let mut config = config::Config::default();
 
     config
@@ -91,7 +92,7 @@ fn main() {
     let ring = hash_ring::Ring::new(10);
 
     let sys = System::new("testing");
-    let mut net = Network::new(ring.clone());
+    // let mut net = Network::new(ring.clone());
 
     let args: Vec<String> = env::args().collect();
     let local_address = args[1].as_str();
@@ -99,11 +100,11 @@ fn main() {
 
     let node_id = utils::generate_node_id(local_address);
 
-    net.configure(config);
+    // net.configure(config);
     // listen on ip and port
-    net.bind(local_address);
+    // net.bind(local_address);
 
-    let net_addr = net.start();
+    // let net_addr = net.start();
     let server = Server::new(net_addr.clone(), ring.clone(), node_id).start();
     net_addr.do_send(SetServer(server.clone()));
 
@@ -138,4 +139,5 @@ fn main() {
         .start();
 
     let _ = sys.run();
+     */
 }

@@ -13,12 +13,15 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::codec::FramedRead;
 use tokio::io::{AsyncRead, WriteHalf};
 
-use crate::network::{Node, NodeSession, remote::{SendRaftMessage, RemoteMessage},
-                     NodeCodec,
-                     NodeRequest,
-                     NodeResponse,
-                     RemoteMessageHandler,
-                     Provider,
+use crate::network::{
+    Node, NodeSession,
+    remote::{RemoteMessage, SendRemoteMessage},
+    NodeCodec,
+    NodeRequest,
+    NodeResponse,
+    HandlerRegistry,
+    RemoteMessageHandler,
+    Provider,
 };
 
 use crate::raft::{storage::{self, *}, MemRaft};
@@ -45,14 +48,15 @@ pub struct Network {
     nodes_info: HashMap<NodeId, NodeInfo>,
     server: Option<Addr<server::Server>>,
     state: NetworkState,
-    pub metrics: Option<RaftMetrics>,
+    metrics: Option<RaftMetrics>,
     sessions: HashMap<NodeId, Addr<NodeSession>>,
     ring: RingType,
-    handlers: HashMap<&'static str, Arc<dyn RemoteMessageHandler>>,
+    raft: Option<Addr<MemRaft>>,
+    registry: Arc<HandlerRegistry>,
 }
 
 impl Network {
-    pub fn new(ring: RingType) -> Network {
+    pub fn new(ring: RingType, registry: Arc<HandlerRegistry>) -> Network {
         Network {
             id: 0,
             address: None,
@@ -65,7 +69,8 @@ impl Network {
             metrics: None,
             sessions: HashMap::new(),
             ring: ring,
-            handlers: HashMap::new(),
+            raft: None,
+            registry: registry,
         }
     }
 
@@ -93,13 +98,31 @@ impl Network {
     }
 
     /// get a node from the network by its id
-    pub fn get_node(&mut self, id: NodeId) -> Option<&Addr<Node>> {
+    pub fn get_node(&self, id: NodeId) -> Option<&Addr<Node>> {
         self.nodes.get(&id)
     }
 
     pub fn bind(&mut self, address: &str) {
         self.address = Some(address.to_owned());
         self.id = generate_node_id(address);
+    }
+}
+
+pub struct DiscoverNodes;
+
+impl Message for DiscoverNodes {
+    type Result = Result<Vec<NodeId>, ()>;
+}
+
+impl Handler<DiscoverNodes> for Network {
+    type Result = ResponseActFuture<Self, Vec<NodeId>, ()>;
+
+    fn handle(&mut self, msg: DiscoverNodes, _: &mut Context<Self>) -> Self::Result {
+        Box::new(fut::wrap_future::<_, Self>(Delay::new(Instant::now() + Duration::from_secs(5)))
+                 .map_err(|_, _, _| ())
+                 .and_then(|_, act: &mut Network, _| {
+                     fut::result(Ok(act.nodes_connected.clone()))
+                 }))
     }
 }
 
@@ -182,10 +205,11 @@ impl Handler<NodeConnect> for Network {
     fn handle(&mut self, msg: NodeConnect, ctx: &mut Context<Self>) {
         let (r, w) = msg.0.split();
         let addr = ctx.address();
+        let registry = self.registry.clone();
 
         NodeSession::create(move |ctx| {
             NodeSession::add_stream(FramedRead::new(r, NodeCodec), ctx);
-            NodeSession::new(actix::io::FramedWrite::new(w, NodeCodec, ctx), addr)
+            NodeSession::new(actix::io::FramedWrite::new(w, NodeCodec, ctx), addr, registry)
         });
     }
 }
@@ -215,6 +239,40 @@ impl Handler<GetNodeAddr> for Network {
         });
 
         Box::new(res)
+    }
+}
+
+
+pub struct DistributeMessage<M>(&'static str, M)
+where M: RemoteMessage + 'static,
+      M::Result: Send + Serialize + DeserializeOwned;
+
+impl<M> Message for DistributeMessage<M>
+where M: RemoteMessage + 'static,
+      M::Result: Send + Serialize + DeserializeOwned
+{
+    type Result = Result<M::Result, ()>;
+}
+
+impl<M> Handler<DistributeMessage<M>> for Network
+where M: RemoteMessage + 'static,
+      M::Result: Send + Serialize + DeserializeOwned
+{
+    type Result = Response<M::Result, ()>;
+
+    fn handle(&mut self, msg: DistributeMessage<M>, ctx: &mut Context<Self>) -> Self::Result {
+        let ring = self.ring.read().unwrap();
+        let node_id = ring.get_node(msg.0.to_owned()).unwrap();
+
+        if let Some(ref node) = self.get_node(*node_id) {
+            let fut = node.send(SendRemoteMessage(msg.1))
+                .map_err(|_| ())
+                .and_then(|res| futures::future::ok(res));
+
+            Response::fut(fut)
+        } else {
+            Response::fut(futures::future::err(()))
+        }
     }
 }
 
@@ -436,6 +494,17 @@ impl Handler<SetServer> for Network {
 
     fn handle(&mut self, msg: SetServer, _: &mut Context<Self>) {
         self.server = Some(msg.0);
+    }
+}
+
+#[derive(Message)]
+pub struct SetRaft(pub Addr<MemRaft>);
+
+impl Handler<SetRaft> for Network {
+    type Result = ();
+
+    fn handle(&mut self, msg: SetRaft, _: &mut Context<Self>) {
+        self.raft = Some(msg.0);
     }
 }
 

@@ -4,7 +4,7 @@ use log::{error};
 
 use crate::network::{
     Network,
-    remote::{SendRaftMessage},
+    remote::{SendRemoteMessage},
 };
 use crate::raft::{
     storage::{
@@ -22,7 +22,7 @@ impl Handler<messages::AppendEntriesRequest<Data>> for Network {
 
     fn handle(&mut self, msg: messages::AppendEntriesRequest<Data>, _ctx: &mut Context<Self>) -> Self::Result {
         let node = self.get_node(msg.target).unwrap();
-        let req = node.send(SendRaftMessage(msg));
+        let req = node.send(SendRemoteMessage(msg));
 
         Box::new(fut::wrap_future(req)
             .map_err(|_, _, _| error!("{}", ERR_ROUTING_FAILURE))
@@ -35,7 +35,7 @@ impl Handler<messages::VoteRequest> for Network {
 
     fn handle(&mut self, msg: messages::VoteRequest, _ctx: &mut Context<Self>) -> Self::Result {
         let node = self.get_node(msg.target).unwrap();
-        let req = node.send(SendRaftMessage(msg));
+        let req = node.send(SendRemoteMessage(msg));
 
         Box::new(fut::wrap_future(req)
                  .map_err(|_, _, _| error!("{}", ERR_ROUTING_FAILURE))
@@ -50,7 +50,7 @@ impl Handler<messages::InstallSnapshotRequest> for Network {
 
     fn handle(&mut self, msg: messages::InstallSnapshotRequest, _ctx: &mut Context<Self>) -> Self::Result {
         let node = self.get_node(msg.target).unwrap();
-        let req = node.send(SendRaftMessage(msg));
+        let req = node.send(SendRemoteMessage(msg));
 
         Box::new(fut::wrap_future(req)
             .map_err(|_, _, _| error!("{}", ERR_ROUTING_FAILURE))

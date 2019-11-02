@@ -1,9 +1,11 @@
 use actix::prelude::*;
 use std::time::{Duration, Instant};
+use tokio::sync::oneshot;
 use tokio::codec::FramedRead;
 use tokio::io::{AsyncRead, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 use actix_raft::{NodeId};
+use std::sync::Arc;
 use log::{error};
 
 use crate::network::{
@@ -13,10 +15,9 @@ use crate::network::{
     NodeResponse,
     PeerConnected,
     SendToRaft,
-    MsgTypes,
     SendToServer,
+    HandlerRegistry,
 };
-
 use crate::server;
 
 // NodeSession
@@ -25,18 +26,21 @@ pub struct NodeSession {
     network: Addr<Network>,
     framed: actix::io::FramedWrite<WriteHalf<TcpStream>, NodeCodec>,
     id: Option<NodeId>,
+    registry: Arc<HandlerRegistry>,
 }
 
 impl NodeSession {
     pub fn new(
         framed: actix::io::FramedWrite<WriteHalf<TcpStream>, NodeCodec>,
         network: Addr<Network>,
+        registry: Arc<HandlerRegistry>,
     ) -> NodeSession {
         NodeSession {
             hb: Instant::now(),
             framed: framed,
             network,
             id: None,
+            registry: registry,
         }
     }
 
@@ -74,7 +78,24 @@ impl StreamHandler<NodeRequest, std::io::Error> for NodeSession {
                 self.id = Some(id);
                 // self.network.do_send(PeerConnected(id));
             },
-            NodeRequest::Message(mid, type_id, msg_type, body) => {
+            NodeRequest::Message(mid, type_id, body) => {
+                let (tx, rx) = oneshot::channel();
+
+                if let Some(ref handler) = self.registry.get(type_id.as_str()) {
+                    handler.handle(body, tx);
+
+                    fut::wrap_future::<_, Self>(rx)
+                        .then(move |res, act, _| {
+                            match res {
+                                Ok(res) => act.framed.write(NodeResponse::Result(mid, res)),
+                                Err(_) => (),
+                            }
+                            fut::ok(())
+                        }).spawn(ctx)
+                }
+
+
+                /*
                 match msg_type {
                     MsgTypes::App => {
                         let task = actix::fut::wrap_future(self.network.send(SendToServer(body)))
@@ -101,6 +122,7 @@ impl StreamHandler<NodeRequest, std::io::Error> for NodeSession {
                         ctx.spawn(task);
                     }
                 }
+*/
             },
         }
     }

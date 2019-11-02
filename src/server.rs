@@ -7,7 +7,7 @@ use crate::session::{self, Session};
 use crate::hash_ring::RingType;
 use crate::network::{
     Network,
-    remote::{DistributeMessage},
+    remote::{SendRemoteMessage},
     GetNodeAddr,
 };
 
@@ -97,7 +97,7 @@ impl Handler<Join> for Server {
             Arbiter::spawn(self.net.send(GetNodeAddr(msg.room_id.clone()))
                            .then(|res| {
                                let node = res.unwrap().unwrap();
-                               node.do_send(DistributeMessage(msg));
+                               node.do_send(SendRemoteMessage(msg));
 
                                futures::future::ok(())
                            }));
@@ -122,7 +122,7 @@ impl Handler<SendRecipient> for Server {
             Arbiter::spawn(self.net.send(GetNodeAddr(msg.recipient_id.clone()))
                            .then(|res| {
                                let node = res.unwrap().unwrap();
-                               node.do_send(DistributeMessage(msg));
+                               node.do_send(SendRemoteMessage(msg));
 
                                futures::future::ok(())
                            }));
@@ -153,7 +153,7 @@ impl Handler<SendRoom> for Server {
                 Arbiter::spawn(self.net.send(GetNodeAddr(msg.room_id.clone()))
                                .then(|res| {
                                    let node = res.unwrap().unwrap();
-                                   node.do_send(DistributeMessage(msg));
+                                   node.do_send(SendRemoteMessage(msg));
 
                                    futures::future::ok(())
                                }));
@@ -179,7 +179,7 @@ impl Handler<CreateRoom> for Server {
             Arbiter::spawn(self.net.send(GetNodeAddr(msg.room_id.clone()))
                            .then(|res| {
                                let node = res.unwrap().unwrap();
-                               node.do_send(DistributeMessage(msg));
+                               node.do_send(SendRemoteMessage(msg));
 
                                futures::future::ok(())
                            }));
@@ -222,7 +222,7 @@ impl Handler<GetMembers> for Server {
                           .map_err(|_| ())
                           .then(|res| {
                               let node = res.unwrap().unwrap();
-                              node.send(DistributeMessage(msg))
+                              node.send(SendRemoteMessage(msg))
                                   .map_err(|_| ())
                                   .map(|res| res.unwrap_or(Vec::new()))
                           }))
