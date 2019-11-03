@@ -4,7 +4,6 @@ use tokio::codec::{Decoder, Encoder};
 use serde::{Serialize, Deserialize};
 use serde_json as json;
 use actix_raft::{NodeId};
-use std::cmp::PartialEq;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum NodeRequest {

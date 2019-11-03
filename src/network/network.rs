@@ -8,22 +8,18 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::codec::FramedRead;
-use tokio::io::{AsyncRead, WriteHalf};
+use tokio::io::{AsyncRead};
 
 use crate::network::{
     Node, NodeSession,
     remote::{RemoteMessage, SendRemoteMessage},
     NodeCodec,
-    NodeRequest,
-    NodeResponse,
     HandlerRegistry,
-    RemoteMessageHandler,
-    Provider,
 };
 
 use crate::raft::{storage::{self, *}, MemRaft};
 use crate::utils::generate_node_id;
-use crate::config::{ConfigSchema, NodeList, NodeInfo};
+use crate::config::{ConfigSchema, NodeInfo};
 use crate::server;
 use crate::hash_ring::RingType;
 
@@ -37,13 +33,13 @@ pub struct Network {
     id: NodeId,
     address: Option<String>,
     peers: Vec<String>,
-    nodes: HashMap<NodeId, Addr<Node>>,
+    nodes: BTreeMap<NodeId, Addr<Node>>,
     nodes_connected: Vec<NodeId>,
     nodes_info: HashMap<NodeId, NodeInfo>,
     server: Option<Addr<server::Server>>,
     state: NetworkState,
     metrics: Option<RaftMetrics>,
-    sessions: HashMap<NodeId, Addr<NodeSession>>,
+    sessions: BTreeMap<NodeId, Addr<NodeSession>>,
     ring: RingType,
     raft: Option<Addr<MemRaft>>,
     registry: Arc<HandlerRegistry>,
@@ -55,13 +51,13 @@ impl Network {
             id: 0,
             address: None,
             peers: Vec::new(),
-            nodes: HashMap::new(),
+            nodes: BTreeMap::new(),
             nodes_connected: Vec::new(),
             nodes_info: HashMap::new(),
             server: None,
             state: NetworkState::Initialized,
             metrics: None,
-            sessions: HashMap::new(),
+            sessions: BTreeMap::new(),
             ring: ring,
             raft: None,
             registry: registry,
@@ -111,7 +107,7 @@ impl Message for DiscoverNodes {
 impl Handler<DiscoverNodes> for Network {
     type Result = ResponseActFuture<Self, Vec<NodeId>, ()>;
 
-    fn handle(&mut self, msg: DiscoverNodes, _: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _: DiscoverNodes, _: &mut Context<Self>) -> Self::Result {
         Box::new(fut::wrap_future::<_, Self>(Delay::new(Instant::now() + Duration::from_secs(5)))
                  .map_err(|_, _, _| ())
                  .and_then(|_, act: &mut Network, _| {

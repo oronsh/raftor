@@ -118,7 +118,7 @@ impl Handler<SendRecipient> for Server {
                 content: msg.content,
                 sender_id: msg.uid,
             });
-        } else if (*node_id != self.node_id) {
+        } else if *node_id != self.node_id {
             Arbiter::spawn(self.net.send(GetNodeAddr(msg.recipient_id.clone()))
                            .then(|res| {
                                let node = res.unwrap().unwrap();
