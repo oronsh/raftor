@@ -85,7 +85,6 @@ impl Handler<ClientRequest> for Raftor {
                 .map_err(|err, _, _| panic!(err))
                 .and_then(move |res, act, ctx| {
                     let leader = res.unwrap();
-                    println!("Found leader: {}", leader);
 
                     if leader == act.id {
                         if let Some(ref raft) = act.raft {

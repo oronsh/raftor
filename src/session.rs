@@ -35,7 +35,6 @@ impl Session {
                 // heartbeat timed out
                 println!("Websocket Client heartbeat failed, disconnecting!");
 
-                // let uid = act.id.to_owned()
                 // notify chat server
                 act.server.do_send(server::Disconnect(act.id.to_owned()));
 

@@ -11,6 +11,7 @@ pub use self::network::{
     GetNode,
     GetNodeAddr,
     DiscoverNodes,
+    DistributeMessage,
     GetCurrentLeader,
     GetNodeById
 };

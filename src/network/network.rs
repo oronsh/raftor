@@ -214,7 +214,7 @@ impl Handler<GetNodeById> for Network {
     }
 }
 
-pub struct DistributeMessage<M>(&'static str, M)
+pub struct DistributeMessage<M>(pub String, pub M)
 where M: RemoteMessage + 'static,
       M::Result: Send + Serialize + DeserializeOwned;
 
@@ -233,7 +233,7 @@ where M: RemoteMessage + 'static,
 
     fn handle(&mut self, msg: DistributeMessage<M>, ctx: &mut Context<Self>) -> Self::Result {
         let ring = self.ring.read().unwrap();
-        let node_id = ring.get_node(msg.0.to_owned()).unwrap();
+        let node_id = ring.get_node(msg.0).unwrap();
 
         if let Some(ref node) = self.get_node(*node_id) {
             let fut = node.send(SendRemoteMessage(msg.1))

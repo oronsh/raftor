@@ -7,6 +7,7 @@ use crate::session::{self, Session};
 use crate::hash_ring::RingType;
 use crate::network::{
     Network,
+    DistributeMessage,
     remote::{SendRemoteMessage},
     GetNodeAddr,
 };
@@ -78,14 +79,6 @@ impl Handler<Disconnect> for Server {
     }
 }
 
-impl Handler<session::Message> for Server {
-    type Result = ();
-
-    fn handle(&mut self, msg: session::Message, ctx: &mut Context<Self>) {
-
-    }
-}
-
 impl Handler<Join> for Server {
     type Result = ();
 
@@ -93,14 +86,7 @@ impl Handler<Join> for Server {
         if let Some(ref mut room) = self.rooms.get_mut(&msg.room_id) {
             room.insert(msg.uid);
         } else {
-
-            Arbiter::spawn(self.net.send(GetNodeAddr(msg.room_id.clone()))
-                           .then(|res| {
-                               let node = res.unwrap().unwrap();
-                               node.do_send(SendRemoteMessage(msg));
-
-                               futures::future::ok(())
-                           }));
+            self.net.do_send(DistributeMessage(msg.room_id.clone(), msg));
         }
     }
 }
@@ -109,25 +95,14 @@ impl Handler<SendRecipient> for Server {
     type Result = ();
 
     fn handle(&mut self, msg: SendRecipient, ctx: &mut Context<Self>) {
-        let ring = self.ring.read().unwrap();
-        let node_id = ring.get_node(msg.recipient_id.clone()).unwrap();
-
         if let Some(session) = self.sessions.get(&msg.recipient_id) {
             // user found on this server
             session.do_send(session::TextMessage{
                 content: msg.content,
                 sender_id: msg.uid,
             });
-        } else if *node_id != self.node_id {
-            Arbiter::spawn(self.net.send(GetNodeAddr(msg.recipient_id.clone()))
-                           .then(|res| {
-                               let node = res.unwrap().unwrap();
-                               node.do_send(SendRemoteMessage(msg));
-
-                               futures::future::ok(())
-                           }));
-            return;
-
+        } else {
+            self.net.do_send(DistributeMessage(msg.recipient_id.clone(), msg));
         }
     }
 }
@@ -147,20 +122,10 @@ impl Handler<SendRoom> for Server {
                 }
             }
         } else {
-            let ring = self.ring.read().unwrap();
-            let node_id = ring.get_node(msg.room_id.clone()).unwrap();
-            if *node_id != self.node_id {
-                Arbiter::spawn(self.net.send(GetNodeAddr(msg.room_id.clone()))
-                               .then(|res| {
-                                   let node = res.unwrap().unwrap();
-                                   node.do_send(SendRemoteMessage(msg));
-
-                                   futures::future::ok(())
-                               }));
-                println!("Distributing message to node {}", node_id);
-            }
+            self.net.do_send(DistributeMessage(msg.room_id.clone(), msg));
         }
     }
+
 }
 
 #[derive(Message, Serialize, Deserialize, Debug)]
@@ -176,15 +141,8 @@ impl Handler<CreateRoom> for Server {
         let node_id = ring.get_node(msg.room_id.clone()).unwrap();
 
         if *node_id != self.node_id {
-            Arbiter::spawn(self.net.send(GetNodeAddr(msg.room_id.clone()))
-                           .then(|res| {
-                               let node = res.unwrap().unwrap();
-                               node.do_send(SendRemoteMessage(msg));
-
-                               futures::future::ok(())
-                           }));
             println!("Distributing message to node {}", node_id);
-            return;
+            return self.net.do_send(DistributeMessage(msg.room_id.clone(), msg));
         }
 
         if let Some(ref mut room) = self.rooms.get_mut(&msg.room_id) {
@@ -218,14 +176,9 @@ impl Handler<GetMembers> for Server {
 
             Response::reply(Ok(members))
         } else {
-            Response::fut(self.net.send(GetNodeAddr(msg.room_id.clone()))
+            Response::fut(self.net.send(DistributeMessage(msg.room_id.clone(), msg))
                           .map_err(|_| ())
-                          .then(|res| {
-                              let node = res.unwrap().unwrap();
-                              node.send(SendRemoteMessage(msg))
-                                  .map_err(|_| ())
-                                  .map(|res| res.unwrap_or(Vec::new()))
-                          }))
+                          .map(|res| res.unwrap().unwrap_or(Vec::new())))
         }
     }
 }
