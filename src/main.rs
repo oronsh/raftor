@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use serde::{Deserialize};
 
 use raftor::{
-    network::{Network, GetNode, SetServer},
+    network::{Network, GetNode},
     server::{self, Server},
     session::Session,
     config::{ConfigSchema},

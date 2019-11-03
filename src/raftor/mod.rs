@@ -79,8 +79,9 @@ impl Raftor {
 }
 
 impl Raftor {
-    pub fn run() {
-
+    pub fn run(&mut self) {
+        println!("Starting raft");
+        self.start_raft();
     }
 
     fn start_raft(&mut self) {

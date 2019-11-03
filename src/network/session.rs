@@ -14,8 +14,6 @@ use crate::network::{
     NodeRequest,
     NodeResponse,
     PeerConnected,
-    SendToRaft,
-    SendToServer,
     HandlerRegistry,
 };
 use crate::server;

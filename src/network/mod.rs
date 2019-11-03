@@ -8,12 +8,8 @@ mod recipient;
 pub use self::network::{
     Network,
     PeerConnected,
-    SendToRaft,
-    SendToServer,
     GetNode,
     GetNodeAddr,
-    SetServer,
-    SetRaft,
     DiscoverNodes,
     GetCurrentLeader,
     GetNodeById
