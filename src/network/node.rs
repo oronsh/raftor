@@ -65,7 +65,7 @@ impl Node {
         let remote_addr = self.peer_addr.as_str().parse().unwrap();
         let conn = TcpStream::connect(&remote_addr)
             .map_err(|e| {
-                println!("Error: {:?}", e);
+                // println!("Error: {:?}", e);
             })
             .map(TcpConnect)
             .into_stream();
@@ -111,7 +111,7 @@ impl Handler<TcpConnect> for Node {
     type Result = ();
 
     fn handle(&mut self, msg: TcpConnect, ctx: &mut Context<Self>) {
-        println!("Connected to remote node #{}", self.id);
+//        println!("Connected to remote node #{}", self.id);
         self.state = NodeState::Connected;
         let (r, w) = msg.0.split();
         Node::add_stream(FramedRead::new(r, ClientNodeCodec), ctx);

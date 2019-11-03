@@ -5,23 +5,26 @@ use crate::raft::storage::{
     MemoryStorageError,
     MemoryStorageResponse
 };
-use crate::server::{GetMembers, CreateRoom, SendRecipient, SendRoom};
+use crate::server::{GetMembers, CreateRoom, SendRecipient, SendRoom, Join};
 use crate::raftor::Raftor;
 
 
 impl Raftor {
-    fn register_handlers(&mut self) {
+    pub (crate) fn register_handlers(&mut self) {
         // register raft handlers
-        self.registry.register::<AppendEntriesRequest<MemoryStorageData>>(self.raft.recipient());
-        self.registry.register::<VoteRequest>(self.raft.recipient());
-        self.registry.register::<InitWithConfig>(self.raft.recipient());
-        self.registry.register::<InstallSnapshotRequest>(self.raft.recipient());
-        self.registry.register::<ClientPayload<MemoryStorageData, MemoryStorageResponse, MemoryStorageError>>(self.raft.recipient());
+        let raft = self.raft.as_ref().unwrap();
+        let mut registry = self.registry.write().unwrap();
+
+        registry.register::<AppendEntriesRequest<MemoryStorageData>>(raft.clone().recipient());
+        registry.register::<VoteRequest>(raft.clone().recipient());
+        registry.register::<InstallSnapshotRequest>(raft.clone().recipient());
+        registry.register::<ClientPayload<MemoryStorageData, MemoryStorageResponse, MemoryStorageError>>(raft.clone().recipient());
 
         // register server handlers
-        self.registry.register::<GetMembers>(self.server.recipient());
-        self.registry.register::<CreateRoom>(self.server.recipient());
-        self.registry.register::<SendRoom>(self.server.recipient());
-        self.registry.register::<SendRecipient>(self.server.recipient());
+        registry.register::<GetMembers>(self.server.clone().recipient());
+        registry.register::<CreateRoom>(self.server.clone().recipient());
+        registry.register::<SendRoom>(self.server.clone().recipient());
+        registry.register::<SendRecipient>(self.server.clone().recipient());
+        registry.register::<Join>(self.server.clone().recipient());
     }
 }

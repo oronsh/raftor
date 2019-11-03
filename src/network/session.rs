@@ -4,7 +4,7 @@ use tokio::sync::oneshot;
 use tokio::io::{WriteHalf};
 use tokio::net::{TcpStream};
 use actix_raft::{NodeId};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use log::{error};
 
 use crate::network::{
@@ -21,14 +21,14 @@ pub struct NodeSession {
     network: Addr<Network>,
     framed: actix::io::FramedWrite<WriteHalf<TcpStream>, NodeCodec>,
     id: Option<NodeId>,
-    registry: Arc<HandlerRegistry>,
+    registry: Arc<RwLock<HandlerRegistry>>,
 }
 
 impl NodeSession {
     pub fn new(
         framed: actix::io::FramedWrite<WriteHalf<TcpStream>, NodeCodec>,
         network: Addr<Network>,
-        registry: Arc<HandlerRegistry>,
+        registry: Arc<RwLock<HandlerRegistry>>,
     ) -> NodeSession {
         NodeSession {
             hb: Instant::now(),
@@ -73,12 +73,14 @@ impl StreamHandler<NodeRequest, std::io::Error> for NodeSession {
             },
             NodeRequest::Message(mid, type_id, body) => {
                 let (tx, rx) = oneshot::channel();
+                let registry = self.registry.read().unwrap();
 
-                if let Some(ref handler) = self.registry.get(type_id.as_str()) {
+                if let Some(ref handler) = registry.get(type_id.as_str()) {
                     handler.handle(body, tx);
 
                     fut::wrap_future::<_, Self>(rx)
                         .then(move |res, act, _| {
+                            // println!("Got remote message {:?}", res);
                             match res {
                                 Ok(res) => act.framed.write(NodeResponse::Result(mid, res)),
                                 Err(_) => (),

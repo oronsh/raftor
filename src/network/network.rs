@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, Instant};
 use tokio::timer::Delay;
 use serde::{de::DeserializeOwned, Serialize};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::codec::FramedRead;
 use tokio::io::{AsyncRead};
@@ -42,11 +42,11 @@ pub struct Network {
     sessions: BTreeMap<NodeId, Addr<NodeSession>>,
     ring: RingType,
     raft: Option<Addr<MemRaft>>,
-    registry: Arc<HandlerRegistry>,
+    registry: Arc<RwLock<HandlerRegistry>>,
 }
 
 impl Network {
-    pub fn new(ring: RingType, registry: Arc<HandlerRegistry>) -> Network {
+    pub fn new(ring: RingType, registry: Arc<RwLock<HandlerRegistry>>) -> Network {
         Network {
             id: 0,
             address: None,
@@ -233,7 +233,7 @@ where M: RemoteMessage + 'static,
 
     fn handle(&mut self, msg: DistributeMessage<M>, ctx: &mut Context<Self>) -> Self::Result {
         let ring = self.ring.read().unwrap();
-        let node_id = ring.get_node(msg.0).unwrap();
+        let node_id = ring.get_node(msg.0.clone()).unwrap();
 
         if let Some(ref node) = self.get_node(*node_id) {
             let fut = node.send(SendRemoteMessage(msg.1))

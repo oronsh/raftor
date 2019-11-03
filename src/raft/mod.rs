@@ -35,7 +35,7 @@ impl RaftBuilder {
             .snapshot_policy(SnapshotPolicy::Disabled).snapshot_max_chunk_size(10000)
             .validate().expect("Raft config to be created without error.");
 
-        let storage = MemoryStorage::create(move |_| MemoryStorage::new(raft_members, snapshot_dir, ring.clone()));
+        let storage = MemoryStorage::create(move |_| MemoryStorage::new(raft_members, snapshot_dir, ring));
 
         let raft_network = network.clone();
         let raft_storage = storage.clone();

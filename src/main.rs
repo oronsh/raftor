@@ -15,6 +15,7 @@ use raftor::{
     network::{Network, GetNode},
     server::{self, Server},
     session::Session,
+    raftor::Raftor,
     config::{ConfigSchema},
     hash_ring,
     utils,
@@ -80,36 +81,16 @@ struct ServerData {
 }
 
 fn main() {
-    /*
-    let mut config = config::Config::default();
-
-    config
-        .merge(config::File::with_name("Config")).unwrap()
-        .merge(config::Environment::with_prefix("APP")).unwrap();
-
-    let config = config.try_into::<ConfigSchema>().unwrap();
-
-    let ring = hash_ring::Ring::new(10);
-
-    let sys = System::new("testing");
-    // let mut net = Network::new(ring.clone());
+    let sys = System::new("raftor");
 
     let args: Vec<String> = env::args().collect();
-    let local_address = args[1].as_str();
     let public_address = args[2].as_str();
 
-    let node_id = utils::generate_node_id(local_address);
+    let mut raftor = Raftor::new();
 
-    // net.configure(config);
-    // listen on ip and port
-    // net.bind(local_address);
+    let state = Arc::new(ServerData{server: raftor.server.clone(), net: raftor.net.clone()});
 
-    // let net_addr = net.start();
-    let server = Server::new(net_addr.clone(), ring.clone(), node_id).start();
-    net_addr.do_send(SetServer(server.clone()));
-
-
-    let state = Arc::new(ServerData{server: server.clone(), net: net_addr.clone()});
+    let _ = raftor.start();
 
     HttpServer::new(move || {
         App::new()
@@ -139,5 +120,4 @@ fn main() {
         .start();
 
     let _ = sys.run();
-     */
 }

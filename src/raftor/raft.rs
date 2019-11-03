@@ -53,13 +53,15 @@ impl Handler<InitRaft> for Raftor {
 
                     let raft = RaftBuilder::new(act.id, nodes.clone(), act.net.clone(), act.ring.clone());
                     act.raft = Some(raft);
+                    act.register_handlers();
+
                     fut::wrap_future::<_, Self>(act.raft.as_ref().unwrap().send(InitWithConfig::new(nodes.clone())))
                         .map_err(|err, _, _| panic!(err))
                         .and_then(|_, _, _|
                                   fut::wrap_future::<_, Self>(Delay::new(Instant::now() + Duration::from_secs(5))))
                         .map_err(|_, _, _| ())
                         .and_then(|_, act, ctx| {
-                            ctx.address().do_send(ClientRequest(act.id));
+                            ctx.notify(ClientRequest(act.id));
                             fut::ok(())
                         })
                 })
@@ -115,14 +117,14 @@ fn handle_client_response(
         Ok(_) => (),
         Err(err) => match err {
             ClientError::Internal => {
-                debug!("TEST: resending client request.");
+                println!("TEST: resending client request.");
                 ctx.notify(msg);
             }
             ClientError::Application(err) => {
-                panic!("Unexpected application error from client request: {:?}", err);
+                println!("Unexpected application error from client request: {:?}", err);
             }
             ClientError::ForwardToLeader{..} => {
-                debug!("TEST: received ForwardToLeader error. Updating leader and forwarding.");
+                println!("TEST: received ForwardToLeader error. Updating leader and forwarding.");
                 ctx.notify(msg);
             }
         }
