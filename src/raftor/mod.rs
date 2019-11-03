@@ -1,8 +1,10 @@
 use actix::prelude::*;
-use actix_raft::{NodeId};
+use actix_raft::{NodeId, admin::{InitWithConfig, InitWithConfigError}};
 use config;
 use std::env;
+use std::time::{Duration, Instant};
 use std::sync::Arc;
+use tokio::timer::Delay;
 
 use crate::raft::{RaftBuilder, MemRaft};
 use crate::network::{
@@ -15,16 +17,20 @@ use crate::config::{ConfigSchema};
 use crate::utils;
 use crate::server::{Server};
 
+mod raft;
+use self::raft::{ClientRequest};
+
 pub struct Raftor {
+    id: NodeId,
     net: Addr<Network>,
-    raft: Addr<MemRaft>,
+    raft: Option<Addr<MemRaft>>,
     server: Addr<Server>,
     ring: RingType,
     registry: Arc<HandlerRegistry>,
 }
 
 impl Raftor {
-    pub fn new() {
+    pub fn new() -> Raftor {
         let mut config = config::Config::default();
 
         config
@@ -60,6 +66,15 @@ impl Raftor {
 
         let server = Server::new(net_addr.clone(), ring.clone(), node_id);
         let server_addr = server.start();
+
+        Raftor {
+            id: node_id,
+            net: net_addr,
+            raft: None,
+            server: server_addr,
+            ring: ring,
+            registry: Arc::new(HandlerRegistry::new())
+        }
     }
 }
 
@@ -69,19 +84,23 @@ impl Raftor {
     }
 
     fn start_raft(&mut self) {
-        self.net.send(DiscoverNodes)
-            .into_actor(self)
+        fut::wrap_future::<_, Self>(self.net.send(DiscoverNodes))
+            .map_err(|_, _, _| ())
             .and_then(|nodes, act, ctx| {
                 let nodes = nodes.unwrap_or(Vec::new());
                 let num_nodes = nodes.len();
 
-                if num_nodes > 1 {
-
-                } else {
-
-                }
-
-                fut::result(Ok(()))
+                let raft = RaftBuilder::new(self.id, nodes.clone(), self.net.clone(), self.ring.clone());
+                act.raft = Some(raft);
+                fut::wrap_future::<_, Self>(act.raft.as_ref().unwrap().send(InitWithConfig::new(nodes.clone())))
+                    .map_err(|err, _, _| panic!(err))
+                    .and_then(|_, _, _|
+                              fut::wrap_future::<_, Self>(Delay::new(Instant::now() + Duration::from_secs(5))))
+                    .map_err(|_, _, _| ())
+                    .and_then(|_, act, ctx| {
+                        ctx.address().send(ClientRequest(act.id));
+                        fut::ok(())
+                    })
             });
     }
 }

@@ -242,6 +242,23 @@ impl Handler<GetNodeAddr> for Network {
     }
 }
 
+pub struct GetNodeById(pub NodeId);
+
+impl Message for GetNodeById {
+    type Result = Result<Addr<Node>, ()>;
+}
+
+impl Handler<GetNodeById> for Network {
+    type Result = Result<Addr<Node>, ()>;
+
+    fn handle(&mut self, msg: GetNodeById, ctx: &mut Context<Self>) -> Self::Result {
+        if let Some(ref node) = self.get_node(msg.0) {
+            Ok((*node).clone())
+        } else {
+            Err(())
+        }
+    }
+}
 
 pub struct DistributeMessage<M>(&'static str, M)
 where M: RemoteMessage + 'static,
