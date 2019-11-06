@@ -36,3 +36,4 @@ TODO:
 - [ ] Error handling
 - [X] Fix rejoin bug
 - [ ] Rehash entities when hash ring topology changes
+- [ ] Buiding js client
