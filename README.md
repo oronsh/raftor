@@ -15,10 +15,17 @@ Every node has a `private_addr` and a `public_addr`
 `private_addr` is the network address used for internal communication
 and `public_addr` is the network address exposed to the world.
 
+`cargo run PRIVATE_ADDRESS PUBLIC_ADDRESS`
+
+for example
+`cargo run 127.0.0.1:8000 127.0.0.1:8080`
+
 ## API
 
 Create room
 `/room/<Name>`
+
+
 
 TODO:
 
