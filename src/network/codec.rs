@@ -1,9 +1,9 @@
+use actix_raft::NodeId;
 use byteorder::{BigEndian, ByteOrder};
 use bytes::{BufMut, BytesMut};
-use tokio::codec::{Decoder, Encoder};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serde_json as json;
-use actix_raft::{NodeId};
+use tokio::codec::{Decoder, Encoder};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum NodeRequest {

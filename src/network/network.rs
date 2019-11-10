@@ -1,27 +1,28 @@
 use actix::prelude::*;
 use actix_raft::{NodeId, RaftMetrics};
 use log::debug;
-use std::collections::{BTreeMap, HashMap};
-use std::time::{Duration, Instant};
-use tokio::timer::Delay;
 use serde::{de::DeserializeOwned, Serialize};
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, RwLock};
-use tokio::net::{TcpListener, TcpStream};
+use std::time::{Duration, Instant};
 use tokio::codec::FramedRead;
-use tokio::io::{AsyncRead};
+use tokio::io::AsyncRead;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::timer::Delay;
 
 use crate::network::{
-    Node, NodeSession,
     remote::{RemoteMessage, SendRemoteMessage},
-    NodeCodec,
-    HandlerRegistry,
+    HandlerRegistry, Node, NodeCodec, NodeSession,
 };
 
-use crate::raft::{storage::{self, *}, MemRaft};
-use crate::utils::generate_node_id;
 use crate::config::{ConfigSchema, NodeInfo};
-use crate::server;
 use crate::hash_ring::RingType;
+use crate::raft::{
+    storage::{self, *},
+    MemRaft,
+};
+use crate::server;
+use crate::utils::generate_node_id;
 
 pub enum NetworkState {
     Initialized,
@@ -80,9 +81,7 @@ impl Network {
         let id = generate_node_id(peer_addr);
         let local_id = self.id;
         let peer_addr = peer_addr.to_owned();
-        let node = Supervisor::start(move |_| {
-            Node::new(id, local_id, peer_addr, addr)
-        });
+        let node = Supervisor::start(move |_| Node::new(id, local_id, peer_addr, addr));
 
         self.nodes.insert(id, node);
     }
@@ -108,11 +107,11 @@ impl Handler<DiscoverNodes> for Network {
     type Result = ResponseActFuture<Self, Vec<NodeId>, ()>;
 
     fn handle(&mut self, _: DiscoverNodes, _: &mut Context<Self>) -> Self::Result {
-        Box::new(fut::wrap_future::<_, Self>(Delay::new(Instant::now() + Duration::from_secs(5)))
-                 .map_err(|_, _, _| ())
-                 .and_then(|_, act: &mut Network, _| {
-                     fut::result(Ok(act.nodes_connected.clone()))
-                 }))
+        Box::new(
+            fut::wrap_future::<_, Self>(Delay::new(Instant::now() + Duration::from_secs(5)))
+                .map_err(|_, _, _| ())
+                .and_then(|_, act: &mut Network, _| fut::result(Ok(act.nodes_connected.clone()))),
+        )
     }
 }
 
@@ -145,11 +144,7 @@ impl Network {
         let server_addr = self.address.as_ref().unwrap().as_str().parse().unwrap();
         let listener = TcpListener::bind(&server_addr).unwrap();
 
-        ctx.add_message_stream(
-            listener.incoming()
-                .map_err(|_| ())
-                .map(NodeConnect)
-        );
+        ctx.add_message_stream(listener.incoming().map_err(|_| ()).map(NodeConnect));
     }
 }
 
@@ -163,7 +158,11 @@ impl Handler<NodeConnect> for Network {
 
         NodeSession::create(move |ctx| {
             NodeSession::add_stream(FramedRead::new(r, NodeCodec), ctx);
-            NodeSession::new(actix::io::FramedWrite::new(w, NodeCodec, ctx), addr, registry)
+            NodeSession::new(
+                actix::io::FramedWrite::new(w, NodeCodec, ctx),
+                addr,
+                registry,
+            )
         });
     }
 }
@@ -179,18 +178,18 @@ impl Handler<GetNodeAddr> for Network {
 
     fn handle(&mut self, msg: GetNodeAddr, ctx: &mut Context<Self>) -> Self::Result {
         let res = fut::wrap_future(ctx.address().send(GetNode(msg.0)))
-        .map_err(|_, _: &mut Network, _| println!("GetNodeAddr Error"))
-        .and_then(|res, act, _| {
-            if let Ok(info) = res {
-                let id = info.0;
-                println!("id: {:?} nodes {:?}", id, act.nodes.keys());
-                let node = act.nodes.get(&id).unwrap();
+            .map_err(|_, _: &mut Network, _| println!("GetNodeAddr Error"))
+            .and_then(|res, act, _| {
+                if let Ok(info) = res {
+                    let id = info.0;
+                    println!("id: {:?} nodes {:?}", id, act.nodes.keys());
+                    let node = act.nodes.get(&id).unwrap();
 
-                fut::result(Ok(node.clone()))
-            } else {
-                fut::result(Err(()))
-            }
-        });
+                    fut::result(Ok(node.clone()))
+                } else {
+                    fut::result(Err(()))
+                }
+            });
 
         Box::new(res)
     }
@@ -215,19 +214,22 @@ impl Handler<GetNodeById> for Network {
 }
 
 pub struct DistributeMessage<M>(pub String, pub M)
-where M: RemoteMessage + 'static,
-      M::Result: Send + Serialize + DeserializeOwned;
+where
+    M: RemoteMessage + 'static,
+    M::Result: Send + Serialize + DeserializeOwned;
 
 impl<M> Message for DistributeMessage<M>
-where M: RemoteMessage + 'static,
-      M::Result: Send + Serialize + DeserializeOwned
+where
+    M: RemoteMessage + 'static,
+    M::Result: Send + Serialize + DeserializeOwned,
 {
     type Result = Result<M::Result, ()>;
 }
 
 impl<M> Handler<DistributeMessage<M>> for Network
-where M: RemoteMessage + 'static,
-      M::Result: Send + Serialize + DeserializeOwned
+where
+    M: RemoteMessage + 'static,
+    M::Result: Send + Serialize + DeserializeOwned,
 {
     type Result = Response<M::Result, ()>;
 
@@ -236,7 +238,8 @@ where M: RemoteMessage + 'static,
         let node_id = ring.get_node(msg.0.clone()).unwrap();
 
         if let Some(ref node) = self.get_node(*node_id) {
-            let fut = node.send(SendRemoteMessage(msg.1))
+            let fut = node
+                .send(SendRemoteMessage(msg.1))
                 .map_err(|_| ())
                 .and_then(|res| futures::future::ok(res));
 

@@ -1,8 +1,8 @@
 use actix::prelude::*;
 use actix_web_actors::ws;
-use std::time::{Instant, Duration};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serde_json;
+use std::time::{Duration, Instant};
 
 use crate::server::{self, Server};
 
@@ -64,7 +64,7 @@ impl Actor for Session {
             .then(|res, act, ctx| {
                 match res {
                     Ok(_) => (),
-                    _ => ctx.stop()
+                    _ => ctx.stop(),
                 }
                 fut::ok(())
             })
@@ -120,7 +120,6 @@ impl Handler<TextMessage> for Session {
     }
 }
 
-
 impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
     fn handle(&mut self, msg: ws::Message, ctx: &mut Self::Context) {
         let uid = self.id.to_owned();
@@ -129,10 +128,10 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
             ws::Message::Ping(msg) => {
                 self.hb = Instant::now();
                 ctx.pong(&msg);
-            },
+            }
             ws::Message::Pong(_) => {
                 self.hb = Instant::now();
-            },
+            }
             ws::Message::Text(msg) => {
                 let msg = serde_json::from_slice::<Message>(msg.as_ref());
                 match msg {
@@ -142,25 +141,25 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
                                 room_id: room_id,
                                 uid: uid,
                             });
-                        },
+                        }
                         Cmds::SendRecipient(recipient_id) => {
                             self.server.do_send(server::SendRecipient {
                                 recipient_id: recipient_id,
                                 uid: uid,
                                 content: msg.content,
                             });
-                        },
+                        }
                         Cmds::SendRoom(room_id) => {
                             self.server.do_send(server::SendRoom {
                                 room_id: room_id,
                                 uid: uid,
-                                content: msg.content
+                                content: msg.content,
                             });
-                        },
+                        }
                     },
-                    Err(err) => println!("Error: {:?}", err)
+                    Err(err) => println!("Error: {:?}", err),
                 }
-            },
+            }
             ws::Message::Binary(_) => println!("Unexpected binary"),
             ws::Message::Close(_) => {
                 ctx.stop();

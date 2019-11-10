@@ -1,19 +1,13 @@
 use actix::prelude::*;
-use std::time::{Duration, Instant};
-use tokio::sync::oneshot;
-use tokio::io::{WriteHalf};
-use tokio::net::{TcpStream};
-use actix_raft::{NodeId};
+use actix_raft::NodeId;
+use log::error;
 use std::sync::{Arc, RwLock};
-use log::{error};
+use std::time::{Duration, Instant};
+use tokio::io::WriteHalf;
+use tokio::net::TcpStream;
+use tokio::sync::oneshot;
 
-use crate::network::{
-    Network,
-    NodeCodec,
-    NodeRequest,
-    NodeResponse,
-    HandlerRegistry,
-};
+use crate::network::{HandlerRegistry, Network, NodeCodec, NodeRequest, NodeResponse};
 
 // NodeSession
 pub struct NodeSession {
@@ -67,10 +61,10 @@ impl StreamHandler<NodeRequest, std::io::Error> for NodeSession {
         match msg {
             NodeRequest::Ping => {
                 self.hb = Instant::now();
-            },
+            }
             NodeRequest::Join(id) => {
                 self.id = Some(id);
-            },
+            }
             NodeRequest::Message(mid, type_id, body) => {
                 let (tx, rx) = oneshot::channel();
                 let registry = self.registry.read().unwrap();
@@ -86,9 +80,10 @@ impl StreamHandler<NodeRequest, std::io::Error> for NodeSession {
                                 Err(_) => (),
                             }
                             fut::ok(())
-                        }).spawn(ctx)
+                        })
+                        .spawn(ctx)
                 }
-            },
+            }
         }
     }
 }

@@ -1,16 +1,11 @@
-use actix_raft::{messages::*, admin::InitWithConfig};
+use actix_raft::{admin::InitWithConfig, messages::*};
 
-use crate::raft::storage::{
-    MemoryStorageData,
-    MemoryStorageError,
-    MemoryStorageResponse
-};
-use crate::server::{GetMembers, CreateRoom, SendRecipient, SendRoom, Join};
+use crate::raft::storage::{MemoryStorageData, MemoryStorageError, MemoryStorageResponse};
 use crate::raftor::Raftor;
-
+use crate::server::{CreateRoom, GetMembers, Join, SendRecipient, SendRoom};
 
 impl Raftor {
-    pub (crate) fn register_handlers(&mut self) {
+    pub(crate) fn register_handlers(&mut self) {
         // register raft handlers
         let raft = self.raft.as_ref().unwrap();
         let mut registry = self.registry.write().unwrap();

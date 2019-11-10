@@ -1,7 +1,7 @@
-use std::sync::{Arc, RwLock};
 use hash_ring::HashRing;
+use std::sync::{Arc, RwLock};
 
-use actix_raft::{NodeId};
+use actix_raft::NodeId;
 
 pub type RingType = Arc<RwLock<HashRing<NodeId>>>;
 pub struct Ring;

@@ -1,32 +1,24 @@
-use std::time::Duration;
-use std::collections::HashMap;
-use tokio::net::TcpStream;
-use tokio::io::{AsyncRead, WriteHalf};
-use tokio::codec::FramedRead;
 use actix::prelude::*;
-use actix_raft::{NodeId};
-use tokio::sync::oneshot;
+use actix_raft::NodeId;
+use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::time::Duration;
+use tokio::codec::FramedRead;
+use tokio::io::{AsyncRead, WriteHalf};
+use tokio::net::TcpStream;
+use tokio::sync::oneshot;
 
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Serialize};
 
 use crate::network::{
-    ClientNodeCodec,
-    NodeRequest,
-    NodeResponse,
-    Network,
-    PeerConnected,
-    remote::{
-        RemoteMessage,
-        RemoteMessageResult,
-        SendRemoteMessage,
-    },
+    remote::{RemoteMessage, RemoteMessageResult, SendRemoteMessage},
+    ClientNodeCodec, Network, NodeRequest, NodeResponse, PeerConnected,
 };
 
 #[derive(PartialEq)]
 enum NodeState {
     Registered,
-    Connected
+    Connected,
 }
 
 pub struct Node {
@@ -111,21 +103,25 @@ impl Handler<TcpConnect> for Node {
     type Result = ();
 
     fn handle(&mut self, msg: TcpConnect, ctx: &mut Context<Self>) {
-//        println!("Connected to remote node #{}", self.id);
+        //        println!("Connected to remote node #{}", self.id);
         self.state = NodeState::Connected;
         let (r, w) = msg.0.split();
         Node::add_stream(FramedRead::new(r, ClientNodeCodec), ctx);
         self.framed = Some(actix::io::FramedWrite::new(w, ClientNodeCodec, ctx));
 
         self.network.do_send(PeerConnected(self.id));
-        self.framed.as_mut().unwrap().write(NodeRequest::Join(self.local_id));
+        self.framed
+            .as_mut()
+            .unwrap()
+            .write(NodeRequest::Join(self.local_id));
         self.hb(ctx);
     }
 }
 
 impl<M> Handler<SendRemoteMessage<M>> for Node
-where M: RemoteMessage + 'static,
-      M::Result: Send + Serialize + DeserializeOwned
+where
+    M: RemoteMessage + 'static,
+    M::Result: Send + Serialize + DeserializeOwned,
 {
     type Result = RemoteMessageResult<M>;
 
@@ -141,7 +137,10 @@ where M: RemoteMessage + 'static,
             framed.write(request);
         }
 
-        RemoteMessageResult{rx: rx, m: PhantomData}
+        RemoteMessageResult {
+            rx: rx,
+            m: PhantomData,
+        }
     }
 }
 
@@ -165,11 +164,11 @@ impl StreamHandler<NodeResponse, std::io::Error> for Node {
                 if let Some(tx) = self.requests.remove(&mid) {
                     let _ = tx.send(data);
                 }
-            },
+            }
             NodeResponse::Ping => {
                 // println!("Client got Ping from {}", self.id);
-              },
-            _ => ()
+            }
+            _ => (),
         }
     }
 }
