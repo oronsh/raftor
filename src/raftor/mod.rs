@@ -1,19 +1,15 @@
 use actix::prelude::*;
-use actix_raft::{NodeId};
+use actix_raft::NodeId;
 use config;
 use std::env;
 use std::sync::{Arc, RwLock};
 
-use crate::raft::{RaftBuilder, MemRaft};
-use crate::network::{
-    Network,
-    HandlerRegistry,
-
-};
+use crate::config::ConfigSchema;
 use crate::hash_ring::{self, RingType};
-use crate::config::{ConfigSchema};
+use crate::network::{HandlerRegistry, Network};
+use crate::raft::{MemRaft, RaftBuilder};
+use crate::server::Server;
 use crate::utils;
-use crate::server::{Server};
 
 mod handlers;
 mod raft;
@@ -33,8 +29,10 @@ impl Raftor {
         let mut config = config::Config::default();
 
         config
-            .merge(config::File::with_name("Config")).unwrap()
-            .merge(config::Environment::with_prefix("APP")).unwrap();
+            .merge(config::File::with_name("Config"))
+            .unwrap()
+            .merge(config::Environment::with_prefix("APP"))
+            .unwrap();
 
         let config = config.try_into::<ConfigSchema>().unwrap();
 
@@ -69,7 +67,7 @@ impl Raftor {
             raft: None,
             server: server_addr,
             ring: ring,
-            registry: registry
+            registry: registry,
         }
     }
 }

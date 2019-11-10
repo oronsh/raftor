@@ -1,21 +1,15 @@
+mod codec;
 mod network;
 mod node;
-mod session;
-mod codec;
-pub mod remote;
 mod recipient;
+pub mod remote;
+mod session;
 
+pub use self::codec::{ClientNodeCodec, NodeCodec, NodeRequest, NodeResponse};
 pub use self::network::{
-    Network,
+    DiscoverNodes, DistributeMessage, GetCurrentLeader, GetNode, GetNodeAddr, GetNodeById, Network,
     PeerConnected,
-    GetNode,
-    GetNodeAddr,
-    DiscoverNodes,
-    DistributeMessage,
-    GetCurrentLeader,
-    GetNodeById
 };
-pub use self::node::{Node};
-pub use self::session::{NodeSession};
-pub use self::codec::{NodeCodec, ClientNodeCodec, NodeRequest, NodeResponse};
-pub use self::recipient::{RemoteMessageHandler, Provider, HandlerRegistry};
+pub use self::node::Node;
+pub use self::recipient::{HandlerRegistry, Provider, RemoteMessageHandler};
+pub use self::session::NodeSession;

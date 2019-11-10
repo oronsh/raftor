@@ -1,16 +1,11 @@
 use actix::prelude::*;
-use std::collections::{HashMap, HashSet};
-use serde::{Serialize, Deserialize};
 use actix_raft::NodeId;
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 
-use crate::session::{self, Session};
 use crate::hash_ring::RingType;
-use crate::network::{
-    Network,
-    DistributeMessage,
-    remote::{SendRemoteMessage},
-    GetNodeAddr,
-};
+use crate::network::{remote::SendRemoteMessage, DistributeMessage, GetNodeAddr, Network};
+use crate::session::{self, Session};
 
 pub struct Server {
     rooms: HashMap<String, HashSet<String>>,
@@ -86,7 +81,8 @@ impl Handler<Join> for Server {
         if let Some(ref mut room) = self.rooms.get_mut(&msg.room_id) {
             room.insert(msg.uid);
         } else {
-            self.net.do_send(DistributeMessage(msg.room_id.clone(), msg));
+            self.net
+                .do_send(DistributeMessage(msg.room_id.clone(), msg));
         }
     }
 }
@@ -97,12 +93,13 @@ impl Handler<SendRecipient> for Server {
     fn handle(&mut self, msg: SendRecipient, ctx: &mut Context<Self>) {
         if let Some(session) = self.sessions.get(&msg.recipient_id) {
             // user found on this server
-            session.do_send(session::TextMessage{
+            session.do_send(session::TextMessage {
                 content: msg.content,
                 sender_id: msg.uid,
             });
         } else {
-            self.net.do_send(DistributeMessage(msg.recipient_id.clone(), msg));
+            self.net
+                .do_send(DistributeMessage(msg.recipient_id.clone(), msg));
         }
     }
 }
@@ -114,7 +111,7 @@ impl Handler<SendRoom> for Server {
         if let Some(ref mut sessions) = self.rooms.get_mut(&msg.room_id) {
             for uid in sessions.iter() {
                 if *uid != msg.uid {
-                    ctx.notify(SendRecipient{
+                    ctx.notify(SendRecipient {
                         recipient_id: uid.clone(),
                         uid: msg.uid.clone(),
                         content: msg.content.clone(),
@@ -122,10 +119,10 @@ impl Handler<SendRoom> for Server {
                 }
             }
         } else {
-            self.net.do_send(DistributeMessage(msg.room_id.clone(), msg));
+            self.net
+                .do_send(DistributeMessage(msg.room_id.clone(), msg));
         }
     }
-
 }
 
 #[derive(Message, Serialize, Deserialize, Debug)]
@@ -136,13 +133,15 @@ pub struct CreateRoom {
 impl Handler<CreateRoom> for Server {
     type Result = ();
 
-    fn handle(&mut self, msg :CreateRoom, ctx: &mut Context<Self>) {
+    fn handle(&mut self, msg: CreateRoom, ctx: &mut Context<Self>) {
         let ring = self.ring.read().unwrap();
         let node_id = ring.get_node(msg.room_id.clone()).unwrap();
 
         if *node_id != self.node_id {
             println!("Distributing message to node {}", node_id);
-            return self.net.do_send(DistributeMessage(msg.room_id.clone(), msg));
+            return self
+                .net
+                .do_send(DistributeMessage(msg.room_id.clone(), msg));
         }
 
         if let Some(ref mut room) = self.rooms.get_mut(&msg.room_id) {
@@ -176,9 +175,12 @@ impl Handler<GetMembers> for Server {
 
             Response::reply(Ok(members))
         } else {
-            Response::fut(self.net.send(DistributeMessage(msg.room_id.clone(), msg))
-                          .map_err(|_| ())
-                          .map(|res| res.unwrap().unwrap_or(Vec::new())))
+            Response::fut(
+                self.net
+                    .send(DistributeMessage(msg.room_id.clone(), msg))
+                    .map_err(|_| ())
+                    .map(|res| res.unwrap().unwrap_or(Vec::new())),
+            )
         }
     }
 }

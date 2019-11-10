@@ -1,39 +1,24 @@
 use actix::prelude::*;
 use actix_raft::{
     admin::InitWithConfig,
-    messages::{
-        ClientError,
-        ClientPayload,
-        ClientPayloadResponse,
-        EntryNormal,
-        ResponseMode,
-    },
-    NodeId,
-    RaftMetrics,
-    Raft,
+    messages::{ClientError, ClientPayload, ClientPayloadResponse, EntryNormal, ResponseMode},
+    NodeId, Raft, RaftMetrics,
 };
+use log::debug;
 use std::time::{Duration, Instant};
 use tokio::timer::Delay;
-use log::debug;
 
-use crate::network::{
-    GetCurrentLeader,
-    GetNodeById,
-    DiscoverNodes,
-    remote::{SendRemoteMessage},
-};
+use crate::network::{remote::SendRemoteMessage, DiscoverNodes, GetCurrentLeader, GetNodeById};
 use crate::raft::{
+    storage::{MemoryStorageData, MemoryStorageError, MemoryStorageResponse},
     RaftBuilder,
-    storage::{
-        MemoryStorageData,
-        MemoryStorageResponse,
-        MemoryStorageError,
-    }
 };
-use crate::raftor::{Raftor};
+use crate::raftor::Raftor;
 
-type ClientResponseHandler = Result<ClientPayloadResponse<MemoryStorageResponse>,
-                                    ClientError<MemoryStorageData, MemoryStorageResponse, MemoryStorageError>>;
+type ClientResponseHandler = Result<
+    ClientPayloadResponse<MemoryStorageResponse>,
+    ClientError<MemoryStorageData, MemoryStorageResponse, MemoryStorageError>,
+>;
 
 pub type Payload = ClientPayload<MemoryStorageData, MemoryStorageResponse, MemoryStorageError>;
 
@@ -51,20 +36,29 @@ impl Handler<InitRaft> for Raftor {
                     let nodes = nodes.unwrap_or(Vec::new());
                     let num_nodes = nodes.len();
 
-                    let raft = RaftBuilder::new(act.id, nodes.clone(), act.net.clone(), act.ring.clone());
+                    let raft =
+                        RaftBuilder::new(act.id, nodes.clone(), act.net.clone(), act.ring.clone());
                     act.raft = Some(raft);
                     act.register_handlers();
 
-                    fut::wrap_future::<_, Self>(act.raft.as_ref().unwrap().send(InitWithConfig::new(nodes.clone())))
-                        .map_err(|err, _, _| panic!(err))
-                        .and_then(|_, _, _|
-                                  fut::wrap_future::<_, Self>(Delay::new(Instant::now() + Duration::from_secs(5))))
-                        .map_err(|_, _, _| ())
-                        .and_then(|_, act, ctx| {
-                            ctx.notify(ClientRequest(act.id));
-                            fut::ok(())
-                        })
-                })
+                    fut::wrap_future::<_, Self>(
+                        act.raft
+                            .as_ref()
+                            .unwrap()
+                            .send(InitWithConfig::new(nodes.clone())),
+                    )
+                    .map_err(|err, _, _| panic!(err))
+                    .and_then(|_, _, _| {
+                        fut::wrap_future::<_, Self>(Delay::new(
+                            Instant::now() + Duration::from_secs(5),
+                        ))
+                    })
+                    .map_err(|_, _, _| ())
+                    .and_then(|_, act, ctx| {
+                        ctx.notify(ClientRequest(act.id));
+                        fut::ok(())
+                    })
+                }),
         );
     }
 }
@@ -79,7 +73,9 @@ impl Handler<ClientRequest> for Raftor {
     type Result = ();
 
     fn handle(&mut self, msg: ClientRequest, ctx: &mut Context<Self>) {
-        let entry = EntryNormal{data: MemoryStorageData(msg.0)};
+        let entry = EntryNormal {
+            data: MemoryStorageData(msg.0),
+        };
         let payload = Payload::new(entry, ResponseMode::Applied);
 
         ctx.spawn(
@@ -90,20 +86,30 @@ impl Handler<ClientRequest> for Raftor {
 
                     if leader == act.id {
                         if let Some(ref raft) = act.raft {
-                            return fut::Either::A(fut::wrap_future::<_, Self>(raft.send(payload))
-                                                  .map_err(|err, _, _| panic!(err))
-                                                  .and_then(|res, act, ctx| fut::ok(handle_client_response(res, ctx, msg))))
+                            return fut::Either::A(
+                                fut::wrap_future::<_, Self>(raft.send(payload))
+                                    .map_err(|err, _, _| panic!(err))
+                                    .and_then(|res, act, ctx| {
+                                        fut::ok(handle_client_response(res, ctx, msg))
+                                    }),
+                            );
                         }
                     }
 
-                    fut::Either::B(fut::wrap_future::<_, Self>(act.net.send(GetNodeById(leader)))
-                        .map_err(move |err, _, _| panic!("Node {} not found", leader))
-                        .and_then(|node, act, ctx| {
-                            fut::wrap_future::<_, Self>(node.unwrap().send(SendRemoteMessage(payload)))
+                    fut::Either::B(
+                        fut::wrap_future::<_, Self>(act.net.send(GetNodeById(leader)))
+                            .map_err(move |err, _, _| panic!("Node {} not found", leader))
+                            .and_then(|node, act, ctx| {
+                                fut::wrap_future::<_, Self>(
+                                    node.unwrap().send(SendRemoteMessage(payload)),
+                                )
                                 .map_err(|err, _, _| panic!(err))
-                                .and_then(|res, act, ctx| fut::ok(handle_client_response(res, ctx, msg)))
-                        }))
-                })
+                                .and_then(|res, act, ctx| {
+                                    fut::ok(handle_client_response(res, ctx, msg))
+                                })
+                            }),
+                    )
+                }),
         );
     }
 }
@@ -111,7 +117,7 @@ impl Handler<ClientRequest> for Raftor {
 fn handle_client_response(
     res: ClientResponseHandler,
     ctx: &mut Context<Raftor>,
-    msg: ClientRequest
+    msg: ClientRequest,
 ) {
     match res {
         Ok(_) => (),
@@ -121,12 +127,15 @@ fn handle_client_response(
                 ctx.notify(msg);
             }
             ClientError::Application(err) => {
-                println!("Unexpected application error from client request: {:?}", err);
+                println!(
+                    "Unexpected application error from client request: {:?}",
+                    err
+                );
             }
-            ClientError::ForwardToLeader{..} => {
+            ClientError::ForwardToLeader { .. } => {
                 println!("TEST: received ForwardToLeader error. Updating leader and forwarding.");
                 ctx.notify(msg);
             }
-        }
+        },
     }
 }
