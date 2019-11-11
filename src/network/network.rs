@@ -15,7 +15,7 @@ use crate::network::{
     HandlerRegistry, Node, NodeCodec, NodeSession,
 };
 
-use crate::config::{ConfigSchema, NodeInfo};
+use crate::config::{ConfigSchema, NodeInfo, NetworkType};
 use crate::hash_ring::RingType;
 use crate::raft::{
     storage::{self, *},
@@ -32,6 +32,7 @@ pub enum NetworkState {
 
 pub struct Network {
     id: NodeId,
+    net_type: NetworkType,
     address: Option<String>,
     peers: Vec<String>,
     nodes: BTreeMap<NodeId, Addr<Node>>,
@@ -47,10 +48,11 @@ pub struct Network {
 }
 
 impl Network {
-    pub fn new(ring: RingType, registry: Arc<RwLock<HandlerRegistry>>) -> Network {
+    pub fn new(ring: RingType, registry: Arc<RwLock<HandlerRegistry>>, net_type: NetworkType) -> Network {
         Network {
             id: 0,
             address: None,
+            net_type: net_type,
             peers: Vec::new(),
             nodes: BTreeMap::new(),
             nodes_connected: Vec::new(),
@@ -69,10 +71,15 @@ impl Network {
         let nodes = config.nodes;
 
         for node in nodes.iter() {
-            let id = generate_node_id(node.private_addr.as_str());
+            let id = generate_node_id(node.cluster_addr.as_str());
             self.nodes_info.insert(id, node.clone());
+
             // register peers
-            self.peers.push(node.private_addr.clone());
+            match self.net_type {
+                NetworkType::App => self.peers.push(node.app_addr.clone()),
+                NetworkType::Cluster => self.peers.push(node.cluster_addr.clone()),
+            }
+
         }
     }
 
@@ -81,7 +88,8 @@ impl Network {
         let id = generate_node_id(peer_addr);
         let local_id = self.id;
         let peer_addr = peer_addr.to_owned();
-        let node = Supervisor::start(move |_| Node::new(id, local_id, peer_addr, addr));
+        let net_type = self.net_type.clone();
+        let node = Supervisor::start(move |_| Node::new(id, local_id, peer_addr, addr, net_type));
 
         self.nodes.insert(id, node);
     }
@@ -155,6 +163,7 @@ impl Handler<NodeConnect> for Network {
         let (r, w) = msg.0.split();
         let addr = ctx.address();
         let registry = self.registry.clone();
+        let net_type = self.net_type.clone();
 
         NodeSession::create(move |ctx| {
             NodeSession::add_stream(FramedRead::new(r, NodeCodec), ctx);
@@ -162,6 +171,7 @@ impl Handler<NodeConnect> for Network {
                 actix::io::FramedWrite::new(w, NodeCodec, ctx),
                 addr,
                 registry,
+                net_type
             )
         });
     }
@@ -265,7 +275,8 @@ impl Handler<GetNode> for Network {
 
         let default = NodeInfo {
             public_addr: "".to_owned(),
-            private_addr: "".to_owned(),
+            app_addr: "".to_owned(),
+            cluster_addr: "".to_owned(),
         };
 
         let node = self.nodes_info.get(node_id).unwrap_or(&default);
@@ -313,7 +324,7 @@ impl Handler<RaftMetrics> for Network {
     type Result = ();
 
     fn handle(&mut self, msg: RaftMetrics, _: &mut Context<Self>) -> Self::Result {
-        debug!("Metrics: node={} state={:?} leader={:?} term={} index={} applied={} cfg={{join={} members={:?} non_voters={:?} removing={:?}}}",
+        println!("Metrics: node={} state={:?} leader={:?} term={} index={} applied={} cfg={{join={} members={:?} non_voters={:?} removing={:?}}}",
                msg.id, msg.state, msg.current_leader, msg.current_term, msg.last_log_index, msg.last_applied,
                msg.membership_config.is_in_joint_consensus, msg.membership_config.members,
                msg.membership_config.non_voters, msg.membership_config.removing,

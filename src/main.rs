@@ -83,13 +83,13 @@ fn main() {
     let sys = System::new("raftor");
 
     let args: Vec<String> = env::args().collect();
-    let public_address = args[2].as_str();
+    let public_address = args[3].as_str();
 
     let mut raftor = Raftor::new();
 
     let state = Arc::new(ServerData {
         server: raftor.server.clone(),
-        net: raftor.net.clone(),
+        net: raftor.app_net.clone(),
     });
 
     let _ = raftor.start();

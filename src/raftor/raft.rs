@@ -30,14 +30,14 @@ impl Handler<InitRaft> for Raftor {
 
     fn handle(&mut self, _: InitRaft, ctx: &mut Context<Self>) {
         ctx.spawn(
-            fut::wrap_future::<_, Self>(self.net.send(DiscoverNodes))
+            fut::wrap_future::<_, Self>(self.cluster_net.send(DiscoverNodes))
                 .map_err(|err, _, _| panic!(err))
                 .and_then(|nodes, act, ctx| {
                     let nodes = nodes.unwrap_or(Vec::new());
                     let num_nodes = nodes.len();
 
                     let raft =
-                        RaftBuilder::new(act.id, nodes.clone(), act.net.clone(), act.ring.clone());
+                        RaftBuilder::new(act.id, nodes.clone(), act.cluster_net.clone(), act.ring.clone());
                     act.raft = Some(raft);
                     act.register_handlers();
 
@@ -49,6 +49,7 @@ impl Handler<InitRaft> for Raftor {
                     )
                     .map_err(|err, _, _| panic!(err))
                     .and_then(|_, _, _| {
+                        println!("Inited with config!");
                         fut::wrap_future::<_, Self>(Delay::new(
                             Instant::now() + Duration::from_secs(5),
                         ))
@@ -79,7 +80,7 @@ impl Handler<ClientRequest> for Raftor {
         let payload = Payload::new(entry, ResponseMode::Applied);
 
         ctx.spawn(
-            fut::wrap_future::<_, Self>(self.net.send(GetCurrentLeader))
+            fut::wrap_future::<_, Self>(self.cluster_net.send(GetCurrentLeader))
                 .map_err(|err, _, _| panic!(err))
                 .and_then(move |res, act, ctx| {
                     let leader = res.unwrap();
@@ -97,7 +98,7 @@ impl Handler<ClientRequest> for Raftor {
                     }
 
                     fut::Either::B(
-                        fut::wrap_future::<_, Self>(act.net.send(GetNodeById(leader)))
+                        fut::wrap_future::<_, Self>(act.cluster_net.send(GetNodeById(leader)))
                             .map_err(move |err, _, _| panic!("Node {} not found", leader))
                             .and_then(|node, act, ctx| {
                                 fut::wrap_future::<_, Self>(

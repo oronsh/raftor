@@ -15,6 +15,8 @@ use crate::network::{
     ClientNodeCodec, Network, NodeRequest, NodeResponse, PeerConnected,
 };
 
+use crate::config::NetworkType;
+
 #[derive(PartialEq)]
 enum NodeState {
     Registered,
@@ -30,10 +32,11 @@ pub struct Node {
     framed: Option<actix::io::FramedWrite<WriteHalf<TcpStream>, ClientNodeCodec>>,
     requests: HashMap<u64, oneshot::Sender<String>>,
     network: Addr<Network>,
+    net_type: NetworkType,
 }
 
 impl Node {
-    pub fn new(id: u64, local_id: NodeId, peer_addr: String, network: Addr<Network>) -> Self {
+    pub fn new(id: u64, local_id: NodeId, peer_addr: String, network: Addr<Network>, net_type: NetworkType) -> Self {
         Node {
             id: id,
             local_id: local_id,
@@ -43,6 +46,7 @@ impl Node {
             framed: None,
             requests: HashMap::new(),
             network: network,
+            net_type: net_type,
         }
     }
 
@@ -114,7 +118,11 @@ impl Handler<TcpConnect> for Node {
             .as_mut()
             .unwrap()
             .write(NodeRequest::Join(self.local_id));
-        self.hb(ctx);
+
+        match self.net_type {
+            NetworkType::Cluster => self.hb(ctx),
+            _ => ()
+        }
     }
 }
 

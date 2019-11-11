@@ -4,7 +4,7 @@ use config;
 use std::env;
 use std::sync::{Arc, RwLock};
 
-use crate::config::ConfigSchema;
+use crate::config::{ConfigSchema, NetworkType};
 use crate::hash_ring::{self, RingType};
 use crate::network::{HandlerRegistry, Network};
 use crate::raft::{MemRaft, RaftBuilder};
@@ -18,7 +18,8 @@ use self::raft::{ClientRequest, InitRaft};
 pub struct Raftor {
     id: NodeId,
     raft: Option<Addr<MemRaft>>,
-    pub net: Addr<Network>,
+    pub app_net: Addr<Network>,
+    pub cluster_net: Addr<Network>,
     pub server: Addr<Server>,
     ring: RingType,
     registry: Arc<RwLock<HandlerRegistry>>,
@@ -42,28 +43,34 @@ impl Raftor {
         // create handlers registry
         let registry = Arc::new(RwLock::new(HandlerRegistry::new()));
 
+        // create cluster network
+        let mut cluster_net = Network::new(ring.clone(), registry.clone(), NetworkType::Cluster);
         // create application network
-        let mut net = Network::new(ring.clone(), registry.clone());
+        let mut app_net = Network::new(ring.clone(), registry.clone(), NetworkType::App);
 
         let args: Vec<String> = env::args().collect();
-        let local_address = args[1].as_str();
+        let cluster_address = args[1].as_str();
+        let app_address = args[2].as_str();
 
         // generate local node id
-        let node_id = utils::generate_node_id(local_address);
+        let node_id = utils::generate_node_id(cluster_address);
 
-        // configure network
-        net.configure(config);
-        // listen on ip and port
-        net.bind(local_address);
-        // start network actor
-        let net_addr = net.start();
+        cluster_net.configure(config.clone()); // configure network
+        cluster_net.bind(cluster_address); // listen on ip and port
 
-        let server = Server::new(net_addr.clone(), ring.clone(), node_id);
+        app_net.configure(config.clone()); // configure network
+        app_net.bind(app_address); // listen on ip and port
+
+        let cluster_net_addr = app_net.start(); // start network actor
+        let app_net_addr = cluster_net.start(); // start network actor
+
+        let server = Server::new(app_net_addr.clone(), ring.clone(), node_id);
         let server_addr = server.start();
 
         Raftor {
             id: node_id,
-            net: net_addr,
+            app_net: app_net_addr,
+            cluster_net: cluster_net_addr,
             raft: None,
             server: server_addr,
             ring: ring,

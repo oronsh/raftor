@@ -8,11 +8,13 @@ use tokio::net::TcpStream;
 use tokio::sync::oneshot;
 
 use crate::network::{HandlerRegistry, Network, NodeCodec, NodeRequest, NodeResponse};
+use crate::config::NetworkType;
 
 // NodeSession
 pub struct NodeSession {
     hb: Instant,
     network: Addr<Network>,
+    net_type: NetworkType,
     framed: actix::io::FramedWrite<WriteHalf<TcpStream>, NodeCodec>,
     id: Option<NodeId>,
     registry: Arc<RwLock<HandlerRegistry>>,
@@ -23,6 +25,7 @@ impl NodeSession {
         framed: actix::io::FramedWrite<WriteHalf<TcpStream>, NodeCodec>,
         network: Addr<Network>,
         registry: Arc<RwLock<HandlerRegistry>>,
+        net_type: NetworkType,
     ) -> NodeSession {
         NodeSession {
             hb: Instant::now(),
@@ -30,6 +33,7 @@ impl NodeSession {
             network,
             id: None,
             registry: registry,
+            net_type: net_type,
         }
     }
 
@@ -50,7 +54,10 @@ impl Actor for NodeSession {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Context<Self>) {
-        self.hb(ctx);
+        match self.net_type {
+            NetworkType::Cluster => self.hb(ctx),
+            _ => ()
+        }
     }
 }
 
