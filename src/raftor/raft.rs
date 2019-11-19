@@ -8,7 +8,7 @@ use log::debug;
 use std::time::{Duration, Instant};
 use tokio::timer::Delay;
 
-use crate::network::{remote::SendRemoteMessage, DiscoverNodes, GetCurrentLeader, GetNodeById};
+use crate::network::{remote::SendRemoteMessage, DiscoverNodes, GetCurrentLeader, GetNodeById, SetRaft};
 use crate::raft::{
     storage::{MemoryStorageData, MemoryStorageError, MemoryStorageResponse},
     RaftBuilder,

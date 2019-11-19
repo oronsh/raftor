@@ -135,7 +135,7 @@ where
 
     fn handle(&mut self, msg: SendRemoteMessage<M>, _ctx: &mut Context<Self>) -> Self::Result {
         let (tx, rx) = oneshot::channel::<String>();
-
+//        println!("Sending remote message {:?}", M::type_id());
         if let Some(ref mut framed) = self.framed {
             self.mid += 1;
             self.requests.insert(self.mid, tx);

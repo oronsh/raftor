@@ -10,7 +10,7 @@ use crate::network::Node;
 use crate::raft::MemRaft;
 use crate::server;
 
-pub trait RemoteMessage: Message + Send + Serialize + DeserializeOwned
+pub trait RemoteMessage: Message + Send + Sync + Serialize + DeserializeOwned
 where
     Self::Result: Send + Serialize + DeserializeOwned,
 {

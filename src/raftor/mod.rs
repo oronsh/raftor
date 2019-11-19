@@ -43,10 +43,6 @@ impl Raftor {
         // create handlers registry
         let registry = Arc::new(RwLock::new(HandlerRegistry::new()));
 
-        // create cluster network
-        let mut cluster_net = Network::new(ring.clone(), registry.clone(), NetworkType::Cluster);
-        // create application network
-        let mut app_net = Network::new(ring.clone(), registry.clone(), NetworkType::App);
 
         let args: Vec<String> = env::args().collect();
         let cluster_address = args[1].as_str();
@@ -55,14 +51,22 @@ impl Raftor {
         // generate local node id
         let node_id = utils::generate_node_id(cluster_address);
 
+        // create cluster network
+        let mut cluster_net = Network::new(node_id, ring.clone(), registry.clone(), NetworkType::Cluster);
+        // create application network
+        let mut app_net = Network::new(node_id, ring.clone(), registry.clone(), NetworkType::App);
+
+        let cluster_arb = Arbiter::new();
+        let app_arb = Arbiter::new();
+
         cluster_net.configure(config.clone()); // configure network
         cluster_net.bind(cluster_address); // listen on ip and port
 
         app_net.configure(config.clone()); // configure network
         app_net.bind(app_address); // listen on ip and port
 
-        let cluster_net_addr = app_net.start(); // start network actor
-        let app_net_addr = cluster_net.start(); // start network actor
+        let cluster_net_addr = Network::start_in_arbiter(&cluster_arb, |_| cluster_net);
+        let app_net_addr = Network::start_in_arbiter(&app_arb, |_| app_net);
 
         let server = Server::new(app_net_addr.clone(), ring.clone(), node_id);
         let server_addr = server.start();

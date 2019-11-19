@@ -48,9 +48,9 @@ pub struct Network {
 }
 
 impl Network {
-    pub fn new(ring: RingType, registry: Arc<RwLock<HandlerRegistry>>, net_type: NetworkType) -> Network {
+    pub fn new(id: NodeId, ring: RingType, registry: Arc<RwLock<HandlerRegistry>>, net_type: NetworkType) -> Network {
         Network {
-            id: 0,
+            id: id,
             address: None,
             net_type: net_type,
             peers: Vec::new(),
@@ -73,24 +73,15 @@ impl Network {
         for node in nodes.iter() {
             let id = generate_node_id(node.cluster_addr.as_str());
             self.nodes_info.insert(id, node.clone());
-
-            // register peers
-            match self.net_type {
-                NetworkType::App => self.peers.push(node.app_addr.clone()),
-                NetworkType::Cluster => self.peers.push(node.cluster_addr.clone()),
-            }
-
         }
     }
 
     /// register a new node to the network
-    pub fn register_node(&mut self, peer_addr: &str, addr: Addr<Self>) {
-        let id = generate_node_id(peer_addr);
+    pub fn register_node(&mut self, id: NodeId, peer_addr: &str, addr: Addr<Self>) {
         let local_id = self.id;
         let peer_addr = peer_addr.to_owned();
         let net_type = self.net_type.clone();
         let node = Supervisor::start(move |_| Node::new(id, local_id, peer_addr, addr, net_type));
-
         self.nodes.insert(id, node);
     }
 
@@ -101,7 +92,7 @@ impl Network {
 
     pub fn bind(&mut self, address: &str) {
         self.address = Some(address.to_owned());
-        self.id = generate_node_id(address);
+
     }
 }
 
@@ -135,10 +126,16 @@ impl Actor for Network {
         self.listen(ctx);
         self.nodes_connected.push(self.id);
 
-        let peers = self.peers.clone();
-        for peer in peers {
+        let nodes = self.nodes_info.clone();
+
+        for (id, node) in &nodes {
+            let peer = match self.net_type {
+                NetworkType::App => node.app_addr.clone(),
+                NetworkType::Cluster => node.cluster_addr.clone(),
+            };
+
             if peer != *network_address {
-                self.register_node(peer.as_str(), ctx.address().clone());
+                self.register_node(*id, peer.as_str(), ctx.address().clone());
             }
         }
     }
@@ -317,6 +314,17 @@ impl Handler<GetCurrentLeader> for Network {
     }
 }
 
+#[derive(Message)]
+pub struct SetRaft(pub Addr<MemRaft>);
+
+impl Handler<SetRaft> for Network {
+    type Result = ();
+
+    fn handle(&mut self, msg: SetRaft, _: &mut Context<Self>) {
+        self.raft = Some(msg.0);
+    }
+}
+
 //////////////////////////////////////////////////////////////////////////////
 // RaftMetrics ///////////////////////////////////////////////////////////////
 
@@ -324,7 +332,7 @@ impl Handler<RaftMetrics> for Network {
     type Result = ();
 
     fn handle(&mut self, msg: RaftMetrics, _: &mut Context<Self>) -> Self::Result {
-        println!("Metrics: node={} state={:?} leader={:?} term={} index={} applied={} cfg={{join={} members={:?} non_voters={:?} removing={:?}}}",
+        debug!("Metrics: node={} state={:?} leader={:?} term={} index={} applied={} cfg={{join={} members={:?} non_voters={:?} removing={:?}}}",
                msg.id, msg.state, msg.current_leader, msg.current_term, msg.last_log_index, msg.last_applied,
                msg.membership_config.is_in_joint_consensus, msg.membership_config.members,
                msg.membership_config.non_voters, msg.membership_config.removing,

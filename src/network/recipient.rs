@@ -1,28 +1,35 @@
 use actix::prelude::*;
+use actix::dev::ToEnvelope;
 use serde::{de::DeserializeOwned, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::oneshot::Sender;
+use std::marker::PhantomData;
 
 use crate::network::remote::RemoteMessage;
 
-pub trait RemoteMessageHandler: Send {
+pub trait RemoteMessageHandler: Send + Sync {
     fn handle(&self, msg: String, sender: Sender<String>);
 }
 
 /// Remote message handler
-pub struct Provider<M>
+pub struct Provider<M, A>
 where
     M: RemoteMessage + 'static,
     M::Result: Send + Serialize + DeserializeOwned,
+    A: Actor + Handler<M>,
+    A::Context: ToEnvelope<A, M>,
 {
-    pub recipient: Recipient<M>,
+    pub recipient: Addr<A>,
+    pub m: PhantomData<M>,
 }
 
-impl<M> RemoteMessageHandler for Provider<M>
+impl<M, A> RemoteMessageHandler for Provider<M, A>
 where
     M: RemoteMessage + 'static,
     M::Result: Send + Serialize + DeserializeOwned,
+    A: Actor + Handler<M>,
+    A::Context: ToEnvelope<A, M>,
 {
     fn handle(&self, msg: String, sender: Sender<String>) {
         let msg = serde_json::from_slice::<M>(msg.as_ref()).unwrap();
@@ -52,13 +59,15 @@ impl HandlerRegistry {
         }
     }
 
-    pub fn register<M>(&mut self, r: Recipient<M>)
+    pub fn register<M, A>(&mut self, r: Addr<A>)
     where
         M: RemoteMessage + 'static,
         M::Result: Send + Serialize + DeserializeOwned,
+        A: Actor + Handler<M>,
+        A::Context: ToEnvelope<A, M>,
     {
         self.handlers
-            .insert(M::type_id(), Arc::new(Provider { recipient: r }));
+            .insert(M::type_id(), Arc::new(Provider { recipient: r, m: PhantomData }));
     }
 
     pub fn get(&self, type_id: &str) -> Option<&Arc<dyn RemoteMessageHandler>> {

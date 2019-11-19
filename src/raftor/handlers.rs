@@ -10,16 +10,16 @@ impl Raftor {
         let raft = self.raft.as_ref().unwrap();
         let mut registry = self.registry.write().unwrap();
 
-        registry.register::<AppendEntriesRequest<MemoryStorageData>>(raft.clone().recipient());
-        registry.register::<VoteRequest>(raft.clone().recipient());
-        registry.register::<InstallSnapshotRequest>(raft.clone().recipient());
-        registry.register::<ClientPayload<MemoryStorageData, MemoryStorageResponse, MemoryStorageError>>(raft.clone().recipient());
+        registry.register::<AppendEntriesRequest<MemoryStorageData>, _>(raft.clone());
+        registry.register::<VoteRequest, _>(raft.clone());
+        registry.register::<InstallSnapshotRequest, _>(raft.clone());
+        registry.register::<ClientPayload<MemoryStorageData, MemoryStorageResponse, MemoryStorageError>, _>(raft.clone());
 
         // register server handlers
-        registry.register::<GetMembers>(self.server.clone().recipient());
-        registry.register::<CreateRoom>(self.server.clone().recipient());
-        registry.register::<SendRoom>(self.server.clone().recipient());
-        registry.register::<SendRecipient>(self.server.clone().recipient());
-        registry.register::<Join>(self.server.clone().recipient());
+        registry.register::<GetMembers, _>(self.server.clone());
+        registry.register::<CreateRoom, _>(self.server.clone());
+        registry.register::<SendRoom, _>(self.server.clone());
+        registry.register::<SendRecipient, _>(self.server.clone());
+        registry.register::<Join, _>(self.server.clone());
     }
 }
