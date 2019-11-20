@@ -91,6 +91,18 @@ impl StreamHandler<NodeRequest, std::io::Error> for NodeSession {
                         .spawn(ctx)
                 }
             }
+            NodeRequest::Dispatch(type_id, body) => {
+                let (tx, rx) = oneshot::channel();
+                let registry = self.registry.read().unwrap();
+
+                if let Some(ref handler) = registry.get(type_id.as_str()) {
+                    handler.handle(body, tx);
+
+                    fut::wrap_future::<_, Self>(rx)
+                        .then(|_, _, _| fut::ok(()))
+                        .spawn(ctx)
+                }
+            }
         }
     }
 }

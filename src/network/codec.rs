@@ -11,6 +11,8 @@ pub enum NodeRequest {
     Join(NodeId),
     /// Message(msg_id, type_id, payload)
     Message(u64, String, String),
+    /// Dispatch(type_id, payload)
+    Dispatch(String, String),
 }
 #[derive(Serialize, Deserialize, Debug)]
 pub enum NodeResponse {

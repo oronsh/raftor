@@ -11,7 +11,7 @@ use tokio::sync::oneshot;
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::network::{
-    remote::{RemoteMessage, RemoteMessageResult, SendRemoteMessage},
+    remote::{RemoteMessage, RemoteMessageResult, SendRemoteMessage, DispatchMessage},
     ClientNodeCodec, Network, NodeRequest, NodeResponse, PeerConnected,
 };
 
@@ -27,6 +27,7 @@ pub struct Node {
     id: NodeId,
     local_id: NodeId,
     mid: u64,
+    did: u64,
     state: NodeState,
     peer_addr: String,
     framed: Option<actix::io::FramedWrite<WriteHalf<TcpStream>, ClientNodeCodec>>,
@@ -41,6 +42,7 @@ impl Node {
             id: id,
             local_id: local_id,
             mid: 0,
+            did: 0,
             state: NodeState::Registered,
             peer_addr: peer_addr,
             framed: None,
@@ -126,6 +128,24 @@ impl Handler<TcpConnect> for Node {
     }
 }
 
+impl<M> Handler<DispatchMessage<M>> for Node
+where
+    M: RemoteMessage + 'static,
+    M::Result: Send + Serialize + DeserializeOwned,
+{
+    type Result = ();
+
+    fn handle(&mut self, msg: DispatchMessage<M>, _ctx: &mut Context<Self>) -> Self::Result {
+        if let Some(ref mut framed) = self.framed {
+            let body = serde_json::to_string::<M>(&msg.0).unwrap();
+            let request = NodeRequest::Dispatch(M::type_id().to_owned(), body);
+            self.did += 1;
+            println!("Dispatching message {:?} #{}", M::type_id(), self.did);
+            framed.write(request);
+        }
+    }
+}
+
 impl<M> Handler<SendRemoteMessage<M>> for Node
 where
     M: RemoteMessage + 'static,
@@ -135,7 +155,7 @@ where
 
     fn handle(&mut self, msg: SendRemoteMessage<M>, _ctx: &mut Context<Self>) -> Self::Result {
         let (tx, rx) = oneshot::channel::<String>();
-//        println!("Sending remote message {:?}", M::type_id());
+
         if let Some(ref mut framed) = self.framed {
             self.mid += 1;
             self.requests.insert(self.mid, tx);

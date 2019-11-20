@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
 use crate::hash_ring::RingType;
-use crate::network::{remote::SendRemoteMessage, DistributeMessage, GetNodeAddr, Network};
+use crate::network::{remote::SendRemoteMessage, DistributeMessage, DistributeAndWait, GetNodeAddr, Network};
 use crate::session::{self, Session};
 
 pub struct Server {
@@ -177,7 +177,7 @@ impl Handler<GetMembers> for Server {
         } else {
             Response::fut(
                 self.net
-                    .send(DistributeMessage(msg.room_id.clone(), msg))
+                    .send(DistributeAndWait(msg.room_id.clone(), msg))
                     .map_err(|_| ())
                     .map(|res| res.unwrap().unwrap_or(Vec::new())),
             )

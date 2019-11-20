@@ -11,7 +11,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::timer::Delay;
 
 use crate::network::{
-    remote::{RemoteMessage, SendRemoteMessage},
+    remote::{RemoteMessage, SendRemoteMessage, DispatchMessage},
     HandlerRegistry, Node, NodeCodec, NodeSession,
 };
 
@@ -220,12 +220,18 @@ impl Handler<GetNodeById> for Network {
     }
 }
 
+#[derive(Message)]
 pub struct DistributeMessage<M>(pub String, pub M)
 where
     M: RemoteMessage + 'static,
     M::Result: Send + Serialize + DeserializeOwned;
 
-impl<M> Message for DistributeMessage<M>
+pub struct DistributeAndWait<M>(pub String, pub M)
+where
+    M: RemoteMessage + 'static,
+    M::Result: Send + Serialize + DeserializeOwned;
+
+impl<M> Message for DistributeAndWait<M>
 where
     M: RemoteMessage + 'static,
     M::Result: Send + Serialize + DeserializeOwned,
@@ -238,9 +244,26 @@ where
     M: RemoteMessage + 'static,
     M::Result: Send + Serialize + DeserializeOwned,
 {
-    type Result = Response<M::Result, ()>;
+    type Result = ();
 
     fn handle(&mut self, msg: DistributeMessage<M>, ctx: &mut Context<Self>) -> Self::Result {
+        let ring = self.ring.read().unwrap();
+        let node_id = ring.get_node(msg.0.clone()).unwrap();
+
+        if let Some(ref node) = self.get_node(*node_id) {
+            node.do_send(DispatchMessage(msg.1))
+        }
+    }
+}
+
+impl<M> Handler<DistributeAndWait<M>> for Network
+where
+    M: RemoteMessage + 'static,
+    M::Result: Send + Serialize + DeserializeOwned,
+{
+    type Result = Response<M::Result, ()>;
+
+    fn handle(&mut self, msg: DistributeAndWait<M>, ctx: &mut Context<Self>) -> Self::Result {
         let ring = self.ring.read().unwrap();
         let node_id = ring.get_node(msg.0.clone()).unwrap();
 

@@ -17,7 +17,14 @@ where
     fn type_id() -> &'static str;
 }
 
-/// DistributeMessage(Message)
+/// SendRemoteMessage(Message)
+#[derive(Message)]
+pub struct DispatchMessage<M>(pub M)
+where
+    M: RemoteMessage + 'static,
+    M::Result: Send + Serialize + DeserializeOwned;
+
+/// SendRemoteMessage(Message)
 pub struct SendRemoteMessage<M>(pub M)
 where
     M: RemoteMessage + 'static,
