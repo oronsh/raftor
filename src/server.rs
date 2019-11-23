@@ -11,6 +11,7 @@ pub struct Server {
     rooms: HashMap<String, HashSet<String>>,
     sessions: HashMap<String, Addr<Session>>,
     net: Addr<Network>,
+    count: u64,
     ring: RingType,
     node_id: NodeId,
 }
@@ -21,6 +22,7 @@ impl Server {
             rooms: HashMap::new(),
             sessions: HashMap::new(),
             net: addr,
+            count: 0,
             ring: ring,
             node_id: node_id,
         }

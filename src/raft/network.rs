@@ -32,6 +32,7 @@ impl Handler<messages::VoteRequest> for Network {
     type Result = ResponseActFuture<Self, messages::VoteResponse, ()>;
 
     fn handle(&mut self, msg: messages::VoteRequest, _ctx: &mut Context<Self>) -> Self::Result {
+        println!("----------- sending vote request");
         let node = self.get_node(msg.target).unwrap();
         let req = node.send(SendRemoteMessage(msg));
 

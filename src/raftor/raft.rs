@@ -41,24 +41,31 @@ impl Handler<InitRaft> for Raftor {
                     act.raft = Some(raft);
                     act.register_handlers();
 
-                    fut::wrap_future::<_, Self>(
-                        act.raft
-                            .as_ref()
-                            .unwrap()
-                            .send(InitWithConfig::new(nodes.clone())),
-                    )
-                    .map_err(|err, _, _| panic!(err))
-                    .and_then(|_, _, _| {
-                        println!("Inited with config!");
-                        fut::wrap_future::<_, Self>(Delay::new(
-                            Instant::now() + Duration::from_secs(5),
-                        ))
-                    })
-                    .map_err(|_, _, _| ())
-                    .and_then(|_, act, ctx| {
-                        ctx.notify(ClientRequest(act.id));
-                        fut::ok(())
-                    })
+                    fut::wrap_future::<_, Self>(Delay::new(
+                        Instant::now() + Duration::from_secs(5),
+                    ))
+                        .map_err(|_, _, _| ())
+                        .and_then(move |_, act, ctx| {
+                            fut::wrap_future::<_, Self>(
+                                act.raft
+                                    .as_ref()
+                                    .unwrap()
+                                    .send(InitWithConfig::new(nodes.clone())),
+                            )
+                                .map_err(|err, _, _| panic!(err))
+                                .and_then(|_, _, _| {
+                                    println!("Inited with config!");
+                                    fut::wrap_future::<_, Self>(Delay::new(
+                                        Instant::now() + Duration::from_secs(5),
+                                    ))
+                                })
+                                .map_err(|_, _, _| ())
+                                .and_then(|_, act, ctx| {
+                                    ctx.notify(ClientRequest(act.id));
+                                    fut::ok(())
+                                })
+                        })
+
                 }),
         );
     }

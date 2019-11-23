@@ -7,6 +7,7 @@ use tokio::codec::FramedRead;
 use tokio::io::{AsyncRead, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::sync::oneshot;
+use log::{debug, info};
 
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -27,7 +28,6 @@ pub struct Node {
     id: NodeId,
     local_id: NodeId,
     mid: u64,
-    did: u64,
     state: NodeState,
     peer_addr: String,
     framed: Option<actix::io::FramedWrite<WriteHalf<TcpStream>, ClientNodeCodec>>,
@@ -42,7 +42,6 @@ impl Node {
             id: id,
             local_id: local_id,
             mid: 0,
-            did: 0,
             state: NodeState::Registered,
             peer_addr: peer_addr,
             framed: None,
@@ -58,7 +57,7 @@ impl Node {
             return ();
         }
 
-        println!("Connecting to node #{}", self.id);
+        debug!("Connecting to node #{}", self.id);
 
         let remote_addr = self.peer_addr.as_str().parse().unwrap();
         let conn = TcpStream::connect(&remote_addr)
@@ -87,7 +86,7 @@ impl Actor for Node {
     }
 
     fn stopped(&mut self, ctx: &mut Context<Self>) {
-        println!("Node #{} disconnected", self.id);
+        info!("Node #{} disconnected", self.id);
         self.state = NodeState::Registered;
         // TODO: remove from network.nodes_connected
     }
@@ -139,8 +138,6 @@ where
         if let Some(ref mut framed) = self.framed {
             let body = serde_json::to_string::<M>(&msg.0).unwrap();
             let request = NodeRequest::Dispatch(M::type_id().to_owned(), body);
-            self.did += 1;
-            println!("Dispatching message {:?} #{}", M::type_id(), self.did);
             framed.write(request);
         }
     }

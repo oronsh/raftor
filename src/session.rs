@@ -14,6 +14,7 @@ const CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
 pub struct Session {
     id: String,
     room: String,
+    count: u64,
     server: Addr<Server>,
     hb: Instant,
 }
@@ -24,6 +25,7 @@ impl Session {
             id: id.to_owned(),
             room: room.to_owned(),
             server: server,
+            count: 0,
             hb: Instant::now(),
         }
     }
@@ -115,6 +117,8 @@ impl Handler<TextMessage> for Session {
     type Result = ();
 
     fn handle(&mut self, msg: TextMessage, ctx: &mut Self::Context) {
+        self.count += 1;
+        println!("Sending message to client #{}", self.count);
         let payload = serde_json::to_string(&msg).unwrap_or("no output".to_owned());
         ctx.text(payload);
     }
