@@ -61,7 +61,8 @@ impl Handler<InitRaft> for Raftor {
                                 })
                                 .map_err(|_, _, _| ())
                                 .and_then(|_, act, ctx| {
-                                    ctx.notify(ClientRequest(act.id));
+                                    let payload = add_node(act.id);
+                                    ctx.notify(ClientRequest(payload));
                                     fut::ok(())
                                 })
                         })
@@ -71,7 +72,7 @@ impl Handler<InitRaft> for Raftor {
     }
 }
 
-pub struct ClientRequest(pub NodeId);
+pub struct ClientRequest(pub MemoryStorageData);
 
 impl Message for ClientRequest {
     type Result = ();
@@ -82,8 +83,9 @@ impl Handler<ClientRequest> for Raftor {
 
     fn handle(&mut self, msg: ClientRequest, ctx: &mut Context<Self>) {
         let entry = EntryNormal {
-            data: MemoryStorageData(msg.0),
+            data: msg.0.clone(),
         };
+
         let payload = Payload::new(entry, ResponseMode::Applied);
 
         ctx.spawn(
@@ -111,15 +113,23 @@ impl Handler<ClientRequest> for Raftor {
                                 fut::wrap_future::<_, Self>(
                                     node.unwrap().send(SendRemoteMessage(payload)),
                                 )
-                                .map_err(|err, _, _| panic!(err))
-                                .and_then(|res, act, ctx| {
-                                    fut::ok(handle_client_response(res, ctx, msg))
-                                })
+                                    .map_err(|err, _, _| panic!(err))
+                                    .and_then(|res, act, ctx| {
+                                        fut::ok(handle_client_response(res, ctx, msg))
+                                    })
                             }),
                     )
                 }),
         );
     }
+}
+
+fn add_node(id: NodeId) -> MemoryStorageData {
+    MemoryStorageData::Add(id)
+}
+
+fn remove_node(id: NodeId) -> MemoryStorageData {
+    MemoryStorageData::Remove(id)
 }
 
 fn handle_client_response(

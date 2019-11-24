@@ -26,7 +26,10 @@ type Entry = RaftEntry<MemoryStorageData>;
 
 /// The concrete data type used by the `MemoryStorage` system.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct MemoryStorageData(pub NodeId);
+pub enum MemoryStorageData {
+    Add(NodeId),
+    Remove(NodeId),
+}
 
 impl AppData for MemoryStorageData {}
 
@@ -201,9 +204,11 @@ impl Handler<ApplyEntryToStateMachine<MemoryStorageData, MemoryStorageResponse, 
             Err(MemoryStorageError)
         } else {
             if let EntryPayload::Normal(entry) = &msg.payload.payload {
-                let node_id = (*entry).data.0;
                 let mut ring = self.ring.write().unwrap();
-                ring.add_node(&node_id);
+                match (*entry).data {
+                    MemoryStorageData::Add(node_id) => ring.add_node(&node_id),
+                    MemoryStorageData::Remove(node_id) => ring.remove_node(&node_id),
+                }
             } else {
             }
 
@@ -227,10 +232,11 @@ impl Handler<ReplicateToStateMachine<MemoryStorageData, MemoryStorageError>> for
                 return Err(MemoryStorageError)
             }
             if let EntryPayload::Normal(entry) = &e.payload {
-
-                let node_id = entry.data.0;
                 let mut ring = self.ring.write().unwrap();
-                ring.add_node(&node_id);
+                match entry.data {
+                    MemoryStorageData::Add(node_id) => ring.add_node(&node_id),
+                    MemoryStorageData::Remove(node_id) => ring.remove_node(&node_id),
+                }
             } else {
 
             }
