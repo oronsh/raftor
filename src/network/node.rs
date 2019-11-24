@@ -1,5 +1,6 @@
 use actix::prelude::*;
 use actix_raft::NodeId;
+use actix::actors::resolver;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::time::Duration;
@@ -7,7 +8,9 @@ use tokio::codec::FramedRead;
 use tokio::io::{AsyncRead, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::sync::oneshot;
-use log::{debug, info};
+use backoff::ExponentialBackoff;
+use backoff::backoff::Backoff;
+use log::{debug, info, error, warn};
 
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -22,6 +25,7 @@ use crate::config::NetworkType;
 enum NodeState {
     Registered,
     Connected,
+    Failed,
 }
 
 pub struct Node {
@@ -29,6 +33,7 @@ pub struct Node {
     local_id: NodeId,
     mid: u64,
     state: NodeState,
+    backoff: ExponentialBackoff,
     peer_addr: String,
     framed: Option<actix::io::FramedWrite<WriteHalf<TcpStream>, ClientNodeCodec>>,
     requests: HashMap<u64, oneshot::Sender<String>>,
@@ -45,29 +50,74 @@ impl Node {
             state: NodeState::Registered,
             peer_addr: peer_addr,
             framed: None,
+            backoff: ExponentialBackoff::default(),
             requests: HashMap::new(),
             network: network,
             net_type: net_type,
         }
     }
 
+    pub fn restart(&mut self, err: Option<actix::actors::resolver::ResolverError>, ctx: &mut Context<Self>)
+    {
+        self.framed.take();
+        self.state = NodeState::Failed;
+
+        if let Some(err) = err {
+            error!("Can not connect to network node: {}, err: {}",
+                   self.peer_addr, err);
+            debug!("{:?}", err);
+        } else {
+            error!("Restart network node connection");
+        }
+        // re-connect with backoff time.
+        // we stop currect context, supervisor will restart it.
+        if let Some(timeout) = self.backoff.next_backoff() {
+            ctx.run_later(timeout, |act, ctx| act.stop_actor(ctx));
+        } else {
+            self.stop_actor(ctx);
+        }
+    }
+
+    fn stop_actor(&mut self, ctx: &mut Context<Self>) {
+        if self.state == NodeState::Failed {
+            ctx.stop()
+        }
+    }
+
     fn connect(&mut self, ctx: &mut Context<Self>) {
         // node is already connected
-        if self.state == NodeState::Connected {
-            return ();
-        }
-
         debug!("Connecting to node #{}", self.id);
-
         let remote_addr = self.peer_addr.as_str().parse().unwrap();
-        let conn = TcpStream::connect(&remote_addr)
-            .map_err(|e| {
-                // println!("Error: {:?}", e);
-            })
-            .map(TcpConnect)
-            .into_stream();
 
-        ctx.add_message_stream(conn);
+        // Connect to actix remote server
+        let resolver = resolver::Resolver::from_registry();
+        resolver.send(actix::actors::resolver::ConnectAddr(remote_addr))
+            .into_actor(self)
+            .map_err(|_, act, ctx| act.restart(None, ctx))
+            .map(|res, act, ctx| match res {
+                Ok(stream) => {
+                    info!("Connected to network node: {}", act.peer_addr);
+
+                    let (r, w) = stream.split();
+
+                    ctx.add_stream(FramedRead::new(r, ClientNodeCodec));
+                    act.framed = Some(actix::io::FramedWrite::new(w, ClientNodeCodec, ctx));
+
+                    act.network.do_send(PeerConnected(act.id));
+                    act.framed
+                        .as_mut()
+                        .unwrap()
+                        .write(NodeRequest::Join(act.local_id));
+
+                    match act.net_type {
+                        NetworkType::Cluster => act.hb(ctx),
+                        _ => ()
+                    }
+
+                },
+                Err(err) => act.restart(Some(err), ctx),
+            })
+            .wait(ctx);
     }
 
     fn hb(&self, ctx: &mut Context<Self>) {
