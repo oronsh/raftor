@@ -44,7 +44,8 @@
            update_ui();
          };
          conn.onmessage = function(e) {
-           log('Received: ' + e.data);
+           const data = JSON.parse(e.data);
+           log(data.sender_id+': ' + data.content);
          };
          conn.onclose = function() {
            log('Disconnected.');
@@ -79,7 +80,7 @@
          }
        }
        $('#connect').click(function() {
-         $.get('http://localhost:8081/node/'+ UID, function(res) {
+         $.get('http://localhost:8080/node/'+ UID, function(res) {
            let url = res.Ok ? res.Ok[1] : null;
            if (conn == null) {
              connect(UID, url);
@@ -102,10 +103,7 @@
          payload = JSON.stringify(payload);
 
          log('Sending: ' + text);
-
-         for(var i=0; i < 1000*1000; i++) {
-           conn.send(payload);
-         }
+         conn.send(payload);
 
          $('#text').val('').focus();
          return false;
