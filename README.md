@@ -1,6 +1,7 @@
 # raftor
 
 Distributed websocket chat
+
 this is an experimental project that distribute websocket connections
 over a cluster.
 
@@ -10,15 +11,28 @@ This project is built on top of
 
 ## How to run
 
-In `Config.toml` list your nodes under `[[node]]`
+In `Config.toml` list your nodes under `[[nodes]]`
+
 Every node has a `private_addr` and a `public_addr`
+
 `private_addr` is the network address used for internal communication
+
 and `public_addr` is the network address exposed to the world.
 
-`cargo run PRIVATE_ADDRESS PUBLIC_ADDRESS`
+`cargo run CLUSTER_ADDRESS APP_ADDRESS PUBLIC_ADDRESS`
 
-for example
-`cargo run 127.0.0.1:8000 127.0.0.1:8080`
+Run in single node
+`cargo run 127.0.0.1:8000 127.0.0.1:9000 127.0.0.1:8080`
+
+Run cluster
+
+```
+cargo run 127.0.0.1:8000 127.0.0.1:9000 127.0.0.1:8080
+
+cargo run 127.0.0.1:8001 127.0.0.1:9001 127.0.0.1:8081
+
+cargo run 127.0.0.1:8002 127.0.0.1:9002 127.0.0.1:8082
+```
 
 ## API
 
