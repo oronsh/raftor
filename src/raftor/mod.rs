@@ -25,12 +25,6 @@ pub struct Raftor {
     registry: Arc<RwLock<HandlerRegistry>>,
 }
 
-impl Default for Raftor {
-    fn default() -> Self {
-        Raftor::new()
-    }
-}
-
 impl Raftor {
     pub fn new() -> Raftor {
         let mut config = config::Config::default();
@@ -64,6 +58,7 @@ impl Raftor {
 
         let cluster_arb = Arbiter::new();
         let app_arb = Arbiter::new();
+        let raft_arb = Arbiter::new();
 
         // create RaftClient actor
         // let raft = RaftClient
