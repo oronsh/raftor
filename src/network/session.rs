@@ -9,6 +9,7 @@ use tokio::sync::oneshot;
 
 use crate::network::{HandlerRegistry, Network, NodeCodec, NodeRequest, NodeResponse};
 use crate::config::NetworkType;
+use crate::raftor::{Raftor, AddNode, RemoveNode};
 
 // NodeSession
 pub struct NodeSession {
@@ -39,14 +40,18 @@ impl NodeSession {
 
     fn hb(&self, ctx: &mut Context<Self>) {
         ctx.run_interval(Duration::new(1, 0), |act, ctx| {
+            println!("Got ping!");
             if Instant::now().duration_since(act.hb) > Duration::new(10, 0) {
                 println!("Client heartbeat failed, disconnecting!");
-                ctx.stop();
             }
 
             // Reply heartbeat
             act.framed.write(NodeResponse::Ping);
         });
+    }
+
+    fn remove_node_from_ring(&self) {
+
     }
 }
 
@@ -58,6 +63,10 @@ impl Actor for NodeSession {
             NetworkType::Cluster => self.hb(ctx),
             _ => ()
         }
+    }
+
+    fn stopped(&mut self, ctx: &mut Context<Self>) {
+        self.remove_node_from_ring();
     }
 }
 

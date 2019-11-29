@@ -1,19 +1,19 @@
 use actix::prelude::*;
 use actix_raft::{
     admin::InitWithConfig,
-    messages::{ClientError, ClientPayload, ClientPayloadResponse, EntryNormal, ResponseMode},
+    messages::*,
     NodeId, Raft, RaftMetrics,
 };
 use log::debug;
 use std::time::{Duration, Instant};
+use std::sync::{Arc, RwLock};
 use tokio::timer::Delay;
-
-use crate::network::{remote::SendRemoteMessage, DiscoverNodes, GetCurrentLeader, GetNodeById, SetRaft};
+use crate::network::{Network, remote::SendRemoteMessage, DiscoverNodes, GetCurrentLeader, GetNodeById, SetRaft, HandlerRegistry};
 use crate::raft::{
     storage::{MemoryStorageData, MemoryStorageError, MemoryStorageResponse},
-    RaftBuilder,
+    RaftBuilder, MemRaft,
 };
-use crate::raftor::Raftor;
+use crate::hash_ring::RingType;
 
 type ClientResponseHandler = Result<
     ClientPayloadResponse<MemoryStorageResponse>,
@@ -22,8 +22,46 @@ type ClientResponseHandler = Result<
 
 pub type Payload = ClientPayload<MemoryStorageData, MemoryStorageResponse, MemoryStorageError>;
 
+pub struct RaftClient {
+    id: NodeId,
+    ring: RingType,
+    raft: Option<Addr<MemRaft>>,
+    registry: Arc<RwLock<HandlerRegistry>>,
+}
+
+impl Actor for RaftClient {
+    type Context = Context<Self>;
+
+    fn started(&mut self, ctx: &mut Context<Self>) {}
+}
+
+impl RaftClient {
+    pub fn new(id: NodeId, ring: RingType, registry: Arc<RwLock<HandlerRegistry>>) -> Addr<RaftClient> {
+        RaftClient::create(move |ctx| {
+            RaftClient {
+                id: id,
+                ring: ring,
+                raft: None,
+                registry: registry,
+            }
+        })
+    }
+
+    fn register_handlers(&mut self, raft: Addr<MemRaft>) {
+        let mut registry = self.registry.write().unwrap();
+
+        registry.register::<AppendEntriesRequest<MemoryStorageData>, _>(raft.clone());
+        registry.register::<VoteRequest, _>(raft.clone());
+        registry.register::<InstallSnapshotRequest, _>(raft.clone());
+        registry.register::<ClientPayload<MemoryStorageData, MemoryStorageResponse, MemoryStorageError>, _>(raft.clone());
+    }
+}
+
 #[derive(Message)]
-pub struct InitRaft;
+pub struct InitRaft {
+    pub nodes: Vec<NodeId>,
+    pub net: Addr<Network>,
+}
 
 #[derive(Message)]
 pub struct AddNode(pub NodeId);
@@ -31,7 +69,7 @@ pub struct AddNode(pub NodeId);
 #[derive(Message)]
 pub struct RemoveNode(pub NodeId);
 
-impl Handler<AddNode> for Raftor {
+impl Handler<AddNode> for RaftClient {
     type Result = ();
 
     fn handle(&mut self, msg: AddNode, ctx: &mut Context<Self>) {
@@ -40,7 +78,7 @@ impl Handler<AddNode> for Raftor {
     }
 }
 
-impl Handler<RemoveNode> for Raftor {
+impl Handler<RemoveNode> for RaftClient {
     type Result = ();
 
     fn handle(&mut self, msg: RemoveNode, ctx: &mut Context<Self>) {
@@ -51,50 +89,41 @@ impl Handler<RemoveNode> for Raftor {
     }
 }
 
-impl Handler<InitRaft> for Raftor {
+impl Handler<InitRaft> for RaftClient {
     type Result = ();
 
-    fn handle(&mut self, _: InitRaft, ctx: &mut Context<Self>) {
-        ctx.spawn(
-            fut::wrap_future::<_, Self>(self.cluster_net.send(DiscoverNodes))
-                .map_err(|err, _, _| panic!(err))
-                .and_then(|nodes, act, ctx| {
-                    let nodes = nodes.unwrap_or(Vec::new());
-                    let num_nodes = nodes.len();
+    fn handle(&mut self, msg: InitRaft, ctx: &mut Context<Self>) {
+        let nodes = msg.nodes;
 
-                    let raft =
-                        RaftBuilder::new(act.id, nodes.clone(), act.cluster_net.clone(), act.ring.clone());
-                    act.raft = Some(raft);
-                    act.register_handlers();
+        let raft =
+            RaftBuilder::new(self.id, nodes.clone(), self.net.clone(), self.ring.clone());
+        self.register_handlers(raft.clone());
+        self.raft = Some(raft);
 
-                    fut::wrap_future::<_, Self>(Delay::new(
-                        Instant::now() + Duration::from_secs(5),
-                    ))
-                        .map_err(|_, _, _| ())
-                        .and_then(move |_, act, ctx| {
-                            fut::wrap_future::<_, Self>(
-                                act.raft
-                                    .as_ref()
-                                    .unwrap()
-                                    .send(InitWithConfig::new(nodes.clone())),
-                            )
-                                .map_err(|err, _, _| panic!(err))
-                                .and_then(|_, _, _| {
-                                    println!("Inited with config!");
-                                    fut::wrap_future::<_, Self>(Delay::new(
-                                        Instant::now() + Duration::from_secs(5),
-                                    ))
-                                })
-                                .map_err(|_, _, _| ())
-                                .and_then(|_, act, ctx| {
-                                    let payload = add_node(act.id);
-                                    ctx.notify(ClientRequest(payload));
-                                    fut::ok(())
-                                })
-                        })
-
-                }),
-        );
+        fut::wrap_future::<_, Self>(Delay::new(Instant::now() + Duration::from_secs(5)))
+            .map_err(|_, _, _| ())
+            .and_then(move |_, act, ctx| {
+                fut::wrap_future::<_, Self>(
+                    act.raft
+                        .as_ref()
+                        .unwrap()
+                        .send(InitWithConfig::new(nodes.clone())),
+                )
+                    .map_err(|err, _, _| panic!(err))
+                    .and_then(|_, _, _| {
+                        println!("Inited with config!");
+                        fut::wrap_future::<_, Self>(Delay::new(
+                            Instant::now() + Duration::from_secs(5),
+                        ))
+                    })
+                    .map_err(|_, _, _| ())
+                    .and_then(|_, act, ctx| {
+                        let payload = add_node(act.id);
+                        ctx.notify(ClientRequest(payload));
+                        fut::ok(())
+                    })
+            })
+            .spawn(ctx);
     }
 }
 
@@ -104,7 +133,7 @@ impl Message for ClientRequest {
     type Result = ();
 }
 
-impl Handler<ClientRequest> for Raftor {
+impl Handler<ClientRequest> for RaftClient {
     type Result = ();
 
     fn handle(&mut self, msg: ClientRequest, ctx: &mut Context<Self>) {
@@ -115,7 +144,7 @@ impl Handler<ClientRequest> for Raftor {
         let payload = Payload::new(entry, ResponseMode::Applied);
 
         ctx.spawn(
-            fut::wrap_future::<_, Self>(self.cluster_net.send(GetCurrentLeader))
+            fut::wrap_future::<_, Self>(self.net.send(GetCurrentLeader))
                 .map_err(|err, _, _| panic!(err))
                 .and_then(move |res, act, ctx| {
                     let leader = res.unwrap();
@@ -133,7 +162,7 @@ impl Handler<ClientRequest> for Raftor {
                     }
 
                     fut::Either::B(
-                        fut::wrap_future::<_, Self>(act.cluster_net.send(GetNodeById(leader)))
+                        fut::wrap_future::<_, Self>(act.net.send(GetNodeById(leader)))
                             .map_err(move |err, _, _| panic!("Node {} not found", leader))
                             .and_then(|node, act, ctx| {
                                 fut::wrap_future::<_, Self>(
@@ -150,17 +179,17 @@ impl Handler<ClientRequest> for Raftor {
     }
 }
 
-pub fn add_node(id: NodeId) -> MemoryStorageData {
+fn add_node(id: NodeId) -> MemoryStorageData {
     MemoryStorageData::Add(id)
 }
 
-pub fn remove_node(id: NodeId) -> MemoryStorageData {
+fn remove_node(id: NodeId) -> MemoryStorageData {
     MemoryStorageData::Remove(id)
 }
 
 fn handle_client_response(
     res: ClientResponseHandler,
-    ctx: &mut Context<Raftor>,
+    ctx: &mut Context<RaftClient>,
     msg: ClientRequest,
 ) {
     match res {

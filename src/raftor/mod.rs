@@ -6,14 +6,14 @@ use std::sync::{Arc, RwLock};
 
 use crate::config::{ConfigSchema, NetworkType};
 use crate::hash_ring::{self, RingType};
-use crate::network::{HandlerRegistry, Network};
-use crate::raft::{MemRaft, RaftBuilder};
+use crate::network::{HandlerRegistry, Network, DiscoverNodes};
+use crate::raft::{RaftClient, MemRaft, RaftBuilder};
 use crate::server::Server;
 use crate::utils;
 
 mod handlers;
 mod raft;
-use self::raft::{ClientRequest, InitRaft};
+pub use self::raft::{ClientRequest, InitRaft, AddNode, RemoveNode};
 
 pub struct Raftor {
     id: NodeId,
@@ -23,6 +23,12 @@ pub struct Raftor {
     pub server: Addr<Server>,
     ring: RingType,
     registry: Arc<RwLock<HandlerRegistry>>,
+}
+
+impl Default for Raftor {
+    fn default() -> Self {
+        Raftor::new()
+    }
 }
 
 impl Raftor {
@@ -59,6 +65,9 @@ impl Raftor {
         let cluster_arb = Arbiter::new();
         let app_arb = Arbiter::new();
 
+        // create RaftClient actor
+        // let raft = RaftClient
+
         cluster_net.configure(config.clone()); // configure network
         cluster_net.bind(cluster_address); // listen on ip and port
 
@@ -87,6 +96,17 @@ impl Actor for Raftor {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Context<Self>) {
+        fut::wrap_future::<_, Self>(self.cluster_net.send(DiscoverNodes))
+            .map_err(|err, _, _| panic!(err))
+            .and_then(|nodes, act, ctx| {
+                act.raft.send(InitRaft{ nodes, net: act.cluster_net.clone() })
+                    .into_actor(self)
+                    .map_err(|err, _, _| panic!(err))
+                    .map(|_, _, _| fut::ok())
+            })
+            .spawn(ctx);
+
         ctx.notify(InitRaft);
+        self.register_handlers();
     }
 }

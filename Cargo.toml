@@ -27,3 +27,4 @@ fasthash = "0.4"
 tempfile = "3"
 hash_ring = { git = "https://github.com/oronsh/rust-hash-ring.git" }
 config = "0.9"
+rocksdb = "0.13"

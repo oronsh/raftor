@@ -158,12 +158,12 @@ impl Handler<NodeConnect> for Network {
     type Result = ();
 
     fn handle(&mut self, msg: NodeConnect, ctx: &mut Context<Self>) {
-        let (r, w) = msg.0.split();
         let addr = ctx.address();
         let registry = self.registry.clone();
         let net_type = self.net_type.clone();
 
         NodeSession::create(move |ctx| {
+            let (r, w) = msg.0.split();
             NodeSession::add_stream(FramedRead::new(r, NodeCodec), ctx);
             NodeSession::new(
                 actix::io::FramedWrite::new(w, NodeCodec, ctx),

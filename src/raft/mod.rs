@@ -13,6 +13,11 @@ use tempfile::tempdir_in;
 
 pub mod network;
 pub mod storage;
+mod client;
+
+pub use self::{
+    client::{RaftClient, InitRaft, AddNode, RemoveNode}
+};
 
 use self::storage::{MemoryStorage, MemoryStorageData, MemoryStorageError, MemoryStorageResponse};
 
