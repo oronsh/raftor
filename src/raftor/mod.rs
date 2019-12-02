@@ -7,7 +7,7 @@ use std::sync::{Arc, RwLock};
 use crate::config::{ConfigSchema, NetworkType};
 use crate::hash_ring::{self, RingType};
 use crate::network::{HandlerRegistry, Network, DiscoverNodes};
-use crate::raft::{RaftClient, MemRaft, RaftBuilder, InitRaft, AddNode, RemoveNode};
+use crate::raft::{RaftClient, MemRaft, RaftBuilder, InitRaft};
 use crate::server::Server;
 use crate::utils;
 

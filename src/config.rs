@@ -13,9 +13,16 @@ pub struct NodeInfo {
     pub public_addr: String,
 }
 
+#[derive(Deserialize, Debug, Clone)]
+pub enum JoinStrategy {
+    Static,
+    Dynamic,
+}
+
 pub type NodeList = Vec<NodeInfo>;
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct ConfigSchema {
+    pub join_strategy: JoinStrategy,
     pub nodes: NodeList,
 }

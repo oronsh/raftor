@@ -88,7 +88,6 @@ impl Actor for Node {
     fn stopped(&mut self, ctx: &mut Context<Self>) {
         info!("Node #{} disconnected", self.id);
         self.state = NodeState::Registered;
-        // TODO: remove from network.nodes_connected
     }
 }
 

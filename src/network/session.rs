@@ -42,6 +42,7 @@ impl NodeSession {
         ctx.run_interval(Duration::new(1, 0), |act, ctx| {
             if Instant::now().duration_since(act.hb) > Duration::new(10, 0) {
                 println!("Client heartbeat failed, disconnecting!");
+                ctx.stop();
             }
 
             // Reply heartbeat

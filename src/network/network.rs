@@ -405,7 +405,7 @@ impl Handler<RaftMetrics> for Network {
     type Result = ();
 
     fn handle(&mut self, msg: RaftMetrics, _: &mut Context<Self>) -> Self::Result {
-        println!("Metrics: node={} state={:?} leader={:?} term={} index={} applied={} cfg={{join={} members={:?} non_voters={:?} removing={:?}}}",
+        debug!("Metrics: node={} state={:?} leader={:?} term={} index={} applied={} cfg={{join={} members={:?} non_voters={:?} removing={:?}}}",
                msg.id, msg.state, msg.current_leader, msg.current_term, msg.last_log_index, msg.last_applied,
                msg.membership_config.is_in_joint_consensus, msg.membership_config.members,
                msg.membership_config.non_voters, msg.membership_config.removing,
