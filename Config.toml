@@ -1,6 +1,11 @@
 max_discovery_timeout = 5
 max_raft_init_timeout = 5
 
+
+host = "127.0.0.1:8000"
+join_strategy = "static"
+
+
 [[nodes]]
 cluster_addr = "127.0.0.1:8000"
 app_addr = "127.0.0.1:9000"
