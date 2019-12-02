@@ -7,9 +7,9 @@ use tokio::io::WriteHalf;
 use tokio::net::TcpStream;
 use tokio::sync::oneshot;
 
-use crate::network::{HandlerRegistry, Network, NodeCodec, NodeRequest, NodeResponse};
+use crate::network::{HandlerRegistry, Network, NodeCodec, NodeRequest, NodeResponse, NodeDisconnect, RestoreNode};
 use crate::config::NetworkType;
-use crate::raftor::{Raftor, AddNode, RemoveNode};
+use crate::raft::{AddNode, RemoveNode};
 
 // NodeSession
 pub struct NodeSession {
@@ -40,7 +40,6 @@ impl NodeSession {
 
     fn hb(&self, ctx: &mut Context<Self>) {
         ctx.run_interval(Duration::new(1, 0), |act, ctx| {
-            println!("Got ping!");
             if Instant::now().duration_since(act.hb) > Duration::new(10, 0) {
                 println!("Client heartbeat failed, disconnecting!");
             }
@@ -48,10 +47,6 @@ impl NodeSession {
             // Reply heartbeat
             act.framed.write(NodeResponse::Ping);
         });
-    }
-
-    fn remove_node_from_ring(&self) {
-
     }
 }
 
@@ -66,7 +61,7 @@ impl Actor for NodeSession {
     }
 
     fn stopped(&mut self, ctx: &mut Context<Self>) {
-        self.remove_node_from_ring();
+        self.network.do_send(NodeDisconnect(self.id.unwrap()));
     }
 }
 
@@ -80,6 +75,7 @@ impl StreamHandler<NodeRequest, std::io::Error> for NodeSession {
             }
             NodeRequest::Join(id) => {
                 self.id = Some(id);
+                self.network.do_send(RestoreNode(self.id.unwrap()));
             }
             NodeRequest::Message(mid, type_id, body) => {
                 let (tx, rx) = oneshot::channel();

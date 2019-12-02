@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum NetworkType {
     Cluster,
     App,

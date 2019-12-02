@@ -200,14 +200,20 @@ impl Handler<ApplyEntryToStateMachine<MemoryStorageData, MemoryStorageResponse, 
             .state_machine
             .insert(msg.payload.index, (*msg.payload).clone())
         {
-            error!("Critical error. State machine entires are not allowed to be overwritten. Entry: {:?}", old);
+            println!("Critical error. State machine entires are not allowed to be overwritten. Entry: {:?}", old);
             Err(MemoryStorageError)
         } else {
             if let EntryPayload::Normal(entry) = &msg.payload.payload {
                 let mut ring = self.ring.write().unwrap();
                 match (*entry).data {
-                    MemoryStorageData::Add(node_id) => ring.add_node(&node_id),
-                    MemoryStorageData::Remove(node_id) => ring.remove_node(&node_id),
+                    MemoryStorageData::Add(node_id) => {
+                        println!("Adding node {}", node_id);
+                        ring.add_node(&node_id)
+                    }
+                    MemoryStorageData::Remove(node_id) => {
+                        println!("Removing node {}", node_id);
+                        ring.remove_node(&node_id)
+                    }
                 }
             } else {
             }
@@ -228,14 +234,20 @@ impl Handler<ReplicateToStateMachine<MemoryStorageData, MemoryStorageError>> for
     ) -> Self::Result {
         let res = msg.payload.iter().try_for_each(|e| {
             if let Some(old) = self.state_machine.insert(e.index, e.clone()) {
-                error!("Critical error. State machine entires are not allowed to be overwritten. Entry: {:?}", old);
+                println!("Critical error. State machine entires are not allowed to be overwritten. Entry: {:?}", old);
                 return Err(MemoryStorageError)
             }
             if let EntryPayload::Normal(entry) = &e.payload {
                 let mut ring = self.ring.write().unwrap();
                 match entry.data {
-                    MemoryStorageData::Add(node_id) => ring.add_node(&node_id),
-                    MemoryStorageData::Remove(node_id) => ring.remove_node(&node_id),
+                    MemoryStorageData::Add(node_id) => {
+                        println!("Adding node {}", node_id);
+                        ring.add_node(&node_id)
+                    }
+                    MemoryStorageData::Remove(node_id) => {
+                        println!("Removing node {}", node_id);
+                        ring.remove_node(&node_id)
+                    }
                 }
             } else {
 

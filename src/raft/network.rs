@@ -18,6 +18,11 @@ impl Handler<messages::AppendEntriesRequest<Data>> for Network {
         _ctx: &mut Context<Self>,
     ) -> Self::Result {
         let node = self.get_node(msg.target).unwrap();
+
+        if self.isolated_nodes.contains(&msg.target) || self.isolated_nodes.contains(&msg.leader_id) {
+            return Box::new(fut::err(()));
+        }
+
         let req = node.send(SendRemoteMessage(msg));
 
         Box::new(
@@ -32,8 +37,12 @@ impl Handler<messages::VoteRequest> for Network {
     type Result = ResponseActFuture<Self, messages::VoteResponse, ()>;
 
     fn handle(&mut self, msg: messages::VoteRequest, _ctx: &mut Context<Self>) -> Self::Result {
-        println!("----------- sending vote request");
         let node = self.get_node(msg.target).unwrap();
+
+        if self.isolated_nodes.contains(&msg.target) || self.isolated_nodes.contains(&msg.candidate_id) {
+            return Box::new(fut::err(()));
+        }
+
         let req = node.send(SendRemoteMessage(msg));
 
         Box::new(
@@ -53,6 +62,11 @@ impl Handler<messages::InstallSnapshotRequest> for Network {
         _ctx: &mut Context<Self>,
     ) -> Self::Result {
         let node = self.get_node(msg.target).unwrap();
+
+        if self.isolated_nodes.contains(&msg.target) || self.isolated_nodes.contains(&msg.leader_id) {
+            return Box::new(fut::err(()));
+        }
+
         let req = node.send(SendRemoteMessage(msg));
 
         Box::new(

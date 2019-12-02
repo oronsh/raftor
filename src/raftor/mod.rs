@@ -7,17 +7,15 @@ use std::sync::{Arc, RwLock};
 use crate::config::{ConfigSchema, NetworkType};
 use crate::hash_ring::{self, RingType};
 use crate::network::{HandlerRegistry, Network, DiscoverNodes};
-use crate::raft::{RaftClient, MemRaft, RaftBuilder};
+use crate::raft::{RaftClient, MemRaft, RaftBuilder, InitRaft, AddNode, RemoveNode};
 use crate::server::Server;
 use crate::utils;
 
 mod handlers;
-mod raft;
-pub use self::raft::{ClientRequest, InitRaft, AddNode, RemoveNode};
 
 pub struct Raftor {
     id: NodeId,
-    raft: Option<Addr<MemRaft>>,
+    raft: Addr<RaftClient>,
     pub app_net: Addr<Network>,
     pub cluster_net: Addr<Network>,
     pub server: Addr<Server>,
@@ -51,17 +49,17 @@ impl Raftor {
         // generate local node id
         let node_id = utils::generate_node_id(cluster_address);
 
-        // create cluster network
-        let mut cluster_net = Network::new(node_id, ring.clone(), registry.clone(), NetworkType::Cluster);
-        // create application network
-        let mut app_net = Network::new(node_id, ring.clone(), registry.clone(), NetworkType::App);
-
         let cluster_arb = Arbiter::new();
         let app_arb = Arbiter::new();
         let raft_arb = Arbiter::new();
 
-        // create RaftClient actor
-        // let raft = RaftClient
+        let raft_client = RaftClient::new(node_id, ring.clone(), registry.clone());
+        let raft = RaftClient::start_in_arbiter(&raft_arb, |_| raft_client);
+
+        // create cluster network
+        let mut cluster_net = Network::new(node_id, ring.clone(), registry.clone(), NetworkType::Cluster, raft.clone());
+        // create application network
+        let mut app_net = Network::new(node_id, ring.clone(), registry.clone(), NetworkType::App, raft.clone());
 
         cluster_net.configure(config.clone()); // configure network
         cluster_net.bind(cluster_address); // listen on ip and port
@@ -79,7 +77,7 @@ impl Raftor {
             id: node_id,
             app_net: app_net_addr,
             cluster_net: cluster_net_addr,
-            raft: None,
+            raft: raft,
             server: server_addr,
             ring: ring,
             registry: registry,
@@ -93,15 +91,14 @@ impl Actor for Raftor {
     fn started(&mut self, ctx: &mut Context<Self>) {
         fut::wrap_future::<_, Self>(self.cluster_net.send(DiscoverNodes))
             .map_err(|err, _, _| panic!(err))
-            .and_then(|nodes, act, ctx| {
-                act.raft.send(InitRaft{ nodes, net: act.cluster_net.clone() })
-                    .into_actor(self)
+            .and_then(|res, act, ctx| {
+                let nodes = res.unwrap();
+                fut::wrap_future::<_, Self>(act.raft.send(InitRaft{ nodes, net: act.cluster_net.clone() }))
                     .map_err(|err, _, _| panic!(err))
-                    .map(|_, _, _| fut::ok())
+                    .and_then(|_, _, _| fut::ok(()))
             })
             .spawn(ctx);
 
-        ctx.notify(InitRaft);
         self.register_handlers();
     }
 }

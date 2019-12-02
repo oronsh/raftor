@@ -8,7 +8,7 @@ use log::debug;
 use std::time::{Duration, Instant};
 use std::sync::{Arc, RwLock};
 use tokio::timer::Delay;
-use crate::network::{Network, remote::SendRemoteMessage, DiscoverNodes, GetCurrentLeader, GetNodeById, SetRaft, HandlerRegistry};
+use crate::network::{Network, remote::SendRemoteMessage, DiscoverNodes, GetCurrentLeader, GetNodeById, HandlerRegistry};
 use crate::raft::{
     storage::{MemoryStorageData, MemoryStorageError, MemoryStorageResponse},
     RaftBuilder, MemRaft,
@@ -27,6 +27,7 @@ pub struct RaftClient {
     ring: RingType,
     raft: Option<Addr<MemRaft>>,
     registry: Arc<RwLock<HandlerRegistry>>,
+    net: Option<Addr<Network>>,
 }
 
 impl Actor for RaftClient {
@@ -36,15 +37,15 @@ impl Actor for RaftClient {
 }
 
 impl RaftClient {
-    pub fn new(id: NodeId, ring: RingType, registry: Arc<RwLock<HandlerRegistry>>) -> Addr<RaftClient> {
-        RaftClient::create(move |ctx| {
-            RaftClient {
-                id: id,
-                ring: ring,
-                raft: None,
-                registry: registry,
-            }
-        })
+    pub fn new(id: NodeId, ring: RingType, registry: Arc<RwLock<HandlerRegistry>>) -> RaftClient {
+        RaftClient {
+            id: id,
+            ring: ring,
+            raft: None,
+            registry: registry,
+            net: None,
+        }
+
     }
 
     fn register_handlers(&mut self, raft: Addr<MemRaft>) {
@@ -82,9 +83,7 @@ impl Handler<RemoveNode> for RaftClient {
     type Result = ();
 
     fn handle(&mut self, msg: RemoveNode, ctx: &mut Context<Self>) {
-        let id = msg.0;
-        let payload = remove_node(id);
-        println!("Removing node {}", id);
+        let payload = remove_node(msg.0);
         ctx.notify(ClientRequest(payload));
     }
 }
@@ -94,9 +93,10 @@ impl Handler<InitRaft> for RaftClient {
 
     fn handle(&mut self, msg: InitRaft, ctx: &mut Context<Self>) {
         let nodes = msg.nodes;
+        self.net = Some(msg.net);
 
         let raft =
-            RaftBuilder::new(self.id, nodes.clone(), self.net.clone(), self.ring.clone());
+            RaftBuilder::new(self.id, nodes.clone(), self.net.as_ref().unwrap().clone(), self.ring.clone());
         self.register_handlers(raft.clone());
         self.raft = Some(raft);
 
@@ -144,7 +144,7 @@ impl Handler<ClientRequest> for RaftClient {
         let payload = Payload::new(entry, ResponseMode::Applied);
 
         ctx.spawn(
-            fut::wrap_future::<_, Self>(self.net.send(GetCurrentLeader))
+            fut::wrap_future::<_, Self>(self.net.as_ref().unwrap().send(GetCurrentLeader))
                 .map_err(|err, _, _| panic!(err))
                 .and_then(move |res, act, ctx| {
                     let leader = res.unwrap();
@@ -162,13 +162,13 @@ impl Handler<ClientRequest> for RaftClient {
                     }
 
                     fut::Either::B(
-                        fut::wrap_future::<_, Self>(act.net.send(GetNodeById(leader)))
+                        fut::wrap_future::<_, Self>(act.net.as_ref().unwrap().send(GetNodeById(leader)))
                             .map_err(move |err, _, _| panic!("Node {} not found", leader))
                             .and_then(|node, act, ctx| {
                                 fut::wrap_future::<_, Self>(
                                     node.unwrap().send(SendRemoteMessage(payload)),
                                 )
-                                    .map_err(|err, _, _| panic!(err))
+                                    .map_err(|err, _, _| println!("Error {:?}", err))
                                     .and_then(|res, act, ctx| {
                                         fut::ok(handle_client_response(res, ctx, msg))
                                     })

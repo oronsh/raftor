@@ -19,12 +19,14 @@ use crate::config::{ConfigSchema, NodeInfo, NetworkType};
 use crate::hash_ring::RingType;
 use crate::raft::{
     storage::{self, *},
-    MemRaft,
+    RaftClient,
+    RemoveNode,
+    AddNode,
 };
 use crate::server;
 use crate::utils::generate_node_id;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum NetworkState {
     Initialized,
     SingleNode,
@@ -38,18 +40,19 @@ pub struct Network {
     peers: Vec<String>,
     nodes: BTreeMap<NodeId, Addr<Node>>,
     nodes_connected: Vec<NodeId>,
+    pub isolated_nodes: Vec<NodeId>,
     nodes_info: HashMap<NodeId, NodeInfo>,
     server: Option<Addr<server::Server>>,
     state: NetworkState,
     metrics: Option<RaftMetrics>,
     sessions: BTreeMap<NodeId, Addr<NodeSession>>,
     ring: RingType,
-    raft: Option<Addr<MemRaft>>,
+    raft: Addr<RaftClient>,
     registry: Arc<RwLock<HandlerRegistry>>,
 }
 
 impl Network {
-    pub fn new(id: NodeId, ring: RingType, registry: Arc<RwLock<HandlerRegistry>>, net_type: NetworkType) -> Network {
+    pub fn new(id: NodeId, ring: RingType, registry: Arc<RwLock<HandlerRegistry>>, net_type: NetworkType, raft: Addr<RaftClient>) -> Network {
         Network {
             id: id,
             address: None,
@@ -57,13 +60,14 @@ impl Network {
             peers: Vec::new(),
             nodes: BTreeMap::new(),
             nodes_connected: Vec::new(),
+            isolated_nodes: Vec::new(),
             nodes_info: HashMap::new(),
             server: None,
             state: NetworkState::Initialized,
             metrics: None,
             sessions: BTreeMap::new(),
             ring: ring,
-            raft: None,
+            raft: raft,
             registry: registry,
         }
     }
@@ -93,7 +97,55 @@ impl Network {
 
     pub fn bind(&mut self, address: &str) {
         self.address = Some(address.to_owned());
+    }
 
+    /// Isolate the network of the specified node.
+    pub fn isolate_node(&mut self, id: NodeId) {
+        debug!("Isolating network for node {}.", &id);
+        self.isolated_nodes.push(id);
+    }
+
+    /// Restore the network of the specified node.
+    pub fn restore_node(&mut self, id: NodeId) {
+        if let Some((idx, _)) = self.isolated_nodes.iter().enumerate().find(|(_, e)| *e == &id) {
+            debug!("Restoring network for node {}.", &id);
+            self.isolated_nodes.remove(idx);
+        }
+    }
+}
+
+#[derive(Message)]
+pub struct NodeDisconnect(pub NodeId);
+
+impl Handler<NodeDisconnect> for Network {
+    type Result = ();
+
+    fn handle(&mut self, msg: NodeDisconnect, ctx: &mut Context<Self>) {
+        let id = msg.0;
+        self.isolated_nodes.push(id);
+
+        if self.net_type != NetworkType::Cluster {
+            return ();
+        }
+
+        Arbiter::spawn(self.raft.send(RemoveNode(id))
+            .map_err(|_| ())
+            .and_then(|res| {
+                println!("removed {:?}", res);
+                futures::future::ok(())
+            }))
+    }
+}
+
+#[derive(Message)]
+pub struct RestoreNode(pub NodeId);
+
+impl Handler<RestoreNode> for Network {
+    type Result = ();
+
+    fn handle(&mut self, msg: RestoreNode, ctx: &mut Context<Self>) {
+        let id = msg.0;
+        self.restore_node(id);
     }
 }
 
@@ -190,7 +242,6 @@ impl Handler<GetNodeAddr> for Network {
             .and_then(|res, act, _| {
                 if let Ok(info) = res {
                     let id = info.0;
-                    println!("id: {:?} nodes {:?}", id, act.nodes.keys());
                     let node = act.nodes.get(&id).unwrap();
 
                     fut::result(Ok(node.clone()))
@@ -323,31 +374,29 @@ impl Message for GetCurrentLeader {
 }
 
 impl Handler<GetCurrentLeader> for Network {
-    type Result = Result<NodeId, ()>;
+    type Result = ResponseActFuture<Self, NodeId, ()>;
 
-    fn handle(&mut self, msg: GetCurrentLeader, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: GetCurrentLeader, ctx: &mut Context<Self>) -> Self::Result {
         if let Some(ref mut metrics) = self.metrics {
             if let Some(leader) = metrics.current_leader {
-                Ok(leader)
+                Box::new(fut::result(Ok(leader)))
             } else {
-                Err(())
+                Box::new(
+                    fut::wrap_future::<_, Self>(ctx.address().send(msg))
+                        .map_err(|_, _, _| ())
+                        .and_then(|res, _, _| fut::result(res))
+                )
             }
         } else {
-            Err(())
+            Box::new(
+                    fut::wrap_future::<_, Self>(ctx.address().send(msg))
+                        .map_err(|_, _, _| ())
+                        .and_then(|res, _, _| fut::result(res))
+                )
         }
     }
 }
 
-#[derive(Message)]
-pub struct SetRaft(pub Addr<MemRaft>);
-
-impl Handler<SetRaft> for Network {
-    type Result = ();
-
-    fn handle(&mut self, msg: SetRaft, _: &mut Context<Self>) {
-        self.raft = Some(msg.0);
-    }
-}
 
 //////////////////////////////////////////////////////////////////////////////
 // RaftMetrics ///////////////////////////////////////////////////////////////
@@ -356,7 +405,7 @@ impl Handler<RaftMetrics> for Network {
     type Result = ();
 
     fn handle(&mut self, msg: RaftMetrics, _: &mut Context<Self>) -> Self::Result {
-        debug!("Metrics: node={} state={:?} leader={:?} term={} index={} applied={} cfg={{join={} members={:?} non_voters={:?} removing={:?}}}",
+        println!("Metrics: node={} state={:?} leader={:?} term={} index={} applied={} cfg={{join={} members={:?} non_voters={:?} removing={:?}}}",
                msg.id, msg.state, msg.current_leader, msg.current_term, msg.last_log_index, msg.last_applied,
                msg.membership_config.is_in_joint_consensus, msg.membership_config.members,
                msg.membership_config.non_voters, msg.membership_config.removing,
