@@ -1,12 +1,13 @@
 use actix::prelude::*;
 use actix_raft::NodeId;
+use actix_web::client::Client;
 use config;
 use std::env;
 use std::sync::{Arc, RwLock};
 
 use crate::config::{ConfigSchema, NetworkType};
 use crate::hash_ring::{self, RingType};
-use crate::network::{HandlerRegistry, Network, DiscoverNodes};
+use crate::network::{HandlerRegistry, Network, DiscoverNodes, SetClusterState, NetworkState};
 use crate::raft::{RaftClient, MemRaft, RaftBuilder, InitRaft};
 use crate::server::Server;
 use crate::utils;
@@ -19,6 +20,7 @@ pub struct Raftor {
     pub app_net: Addr<Network>,
     pub cluster_net: Addr<Network>,
     pub server: Addr<Server>,
+    discovery_host: String,
     ring: RingType,
     registry: Arc<RwLock<HandlerRegistry>>,
 }
@@ -81,6 +83,7 @@ impl Raftor {
             server: server_addr,
             ring: ring,
             registry: registry,
+            discovery_host: config.discovery_host.clone(),
         }
     }
 }
@@ -89,13 +92,19 @@ impl Actor for Raftor {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Context<Self>) {
+        let mut client = Client::default();
+
         fut::wrap_future::<_, Self>(self.cluster_net.send(DiscoverNodes))
             .map_err(|err, _, _| panic!(err))
             .and_then(|res, act, ctx| {
                 let nodes = res.unwrap();
-                fut::wrap_future::<_, Self>(act.raft.send(InitRaft{ nodes, net: act.cluster_net.clone() }))
+                fut::wrap_future::<_, Self>(act.raft.send(InitRaft{ nodes, net: act.cluster_net.clone(), server: act.server.clone() }))
                     .map_err(|err, _, _| panic!(err))
-                    .and_then(|_, _, _| fut::ok(()))
+                    .and_then(|_, act, _| {
+                        act.app_net.do_send(SetClusterState(NetworkState::Cluster));
+                        act.cluster_net.do_send(SetClusterState(NetworkState::Cluster));
+                        fut::ok(())
+                    })
             })
             .spawn(ctx);
 

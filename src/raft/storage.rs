@@ -21,6 +21,7 @@ use actix_raft::{
 };
 
 use crate::hash_ring::RingType;
+use crate::server::{Server, Rebalance};
 
 type Entry = RaftEntry<MemoryStorageData>;
 
@@ -69,11 +70,12 @@ pub struct MemoryStorage {
     state_machine: BTreeMap<u64, Entry>,
     snapshot_actor: Addr<SnapshotActor>,
     ring: RingType,
+    server: Addr<Server>,
 }
 
 impl MemoryStorage {
     /// Create a new instance.
-    pub fn new(members: Vec<NodeId>, snapshot_dir: String, ring: RingType) -> Self {
+    pub fn new(members: Vec<NodeId>, snapshot_dir: String, ring: RingType, server: Addr<Server>) -> Self {
         let snapshot_dir_pathbuf = std::path::PathBuf::from(snapshot_dir.clone());
         let membership = MembershipConfig {
             members,
@@ -95,6 +97,7 @@ impl MemoryStorage {
                 SnapshotActor(snapshot_dir_pathbuf.clone())
             }),
             ring: ring,
+            server: server,
         }
     }
 }
@@ -208,7 +211,8 @@ impl Handler<ApplyEntryToStateMachine<MemoryStorageData, MemoryStorageResponse, 
                 match (*entry).data {
                     MemoryStorageData::Add(node_id) => {
                         println!("Adding node {}", node_id);
-                        ring.add_node(&node_id)
+                        ring.add_node(&node_id);
+                        self.server.do_send(Rebalance)
                     }
                     MemoryStorageData::Remove(node_id) => {
                         println!("Removing node {}", node_id);
@@ -242,7 +246,8 @@ impl Handler<ReplicateToStateMachine<MemoryStorageData, MemoryStorageError>> for
                 match entry.data {
                     MemoryStorageData::Add(node_id) => {
                         println!("Adding node {}", node_id);
-                        ring.add_node(&node_id)
+                        ring.add_node(&node_id);
+                        self.server.do_send(Rebalance)
                     }
                     MemoryStorageData::Remove(node_id) => {
                         println!("Removing node {}", node_id);

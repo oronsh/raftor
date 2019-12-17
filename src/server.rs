@@ -35,6 +35,9 @@ pub struct Connect(pub String, pub Addr<Session>);
 #[derive(Message)]
 pub struct Disconnect(pub String);
 
+#[derive(Message)]
+pub struct DisconnectSession;
+
 #[derive(Message, Serialize, Deserialize, Debug)]
 pub struct Join {
     pub room_id: String,
@@ -54,6 +57,9 @@ pub struct SendRoom {
     pub uid: String,
     pub content: String,
 }
+
+#[derive(Message)]
+pub struct Rebalance;
 
 impl Actor for Server {
     type Context = Context<Self>;
@@ -183,6 +189,23 @@ impl Handler<GetMembers> for Server {
                     .map_err(|_| ())
                     .map(|res| res.unwrap().unwrap_or(Vec::new())),
             )
+        }
+    }
+}
+
+
+impl Handler<Rebalance> for Server {
+    type Result = ();
+
+    fn handle(&mut self, _: Rebalance, ctx: &mut Context<Self>) {
+        let ring = self.ring.read().unwrap();
+        // let node_id = ring.get_node(msg.room_id.clone()).unwrap();
+
+        for (uid, session) in &self.sessions {
+            let node_id = ring.get_node(uid.to_string()).unwrap();
+            if *node_id != self.node_id {
+                session.do_send(DisconnectSession);
+            }
         }
     }
 }

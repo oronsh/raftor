@@ -62,7 +62,10 @@ impl Actor for NodeSession {
     }
 
     fn stopped(&mut self, ctx: &mut Context<Self>) {
-        self.network.do_send(NodeDisconnect(self.id.unwrap()));
+        if self.net_type == NetworkType::Cluster {
+            println!("About to remove node...");
+            self.network.do_send(NodeDisconnect(self.id.unwrap()));
+        }
     }
 }
 

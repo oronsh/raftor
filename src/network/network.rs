@@ -1,7 +1,7 @@
 use actix::prelude::*;
 use actix_raft::{NodeId, RaftMetrics};
 use log::debug;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Serialize, Deserialize};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
@@ -26,7 +26,7 @@ use crate::raft::{
 use crate::server;
 use crate::utils::generate_node_id;
 
-#[derive(Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub enum NetworkState {
     Initialized,
     SingleNode,
@@ -101,6 +101,10 @@ impl Network {
 
     /// Isolate the network of the specified node.
     pub fn isolate_node(&mut self, id: NodeId) {
+        if let Some((idx, _)) = self.isolated_nodes.iter().enumerate().find(|(_, e)| *e == &id) {
+            return ();
+        }
+
         debug!("Isolating network for node {}.", &id);
         self.isolated_nodes.push(id);
     }
@@ -149,6 +153,45 @@ impl Handler<RestoreNode> for Network {
     }
 }
 
+pub struct GetClusterState;
+
+impl Message for GetClusterState {
+    type Result = Result<NetworkState, ()>;
+}
+
+impl Handler<GetClusterState> for Network {
+    type Result = Result<NetworkState, ()>;
+
+    fn handle(&mut self, _: GetClusterState, ctx: &mut Context<Self>) -> Self::Result {
+        Ok(self.state.clone())
+    }
+}
+
+#[derive(Message)]
+pub struct SetClusterState(pub NetworkState);
+
+impl Handler<SetClusterState> for Network {
+    type Result = ();
+
+    fn handle(&mut self, msg: SetClusterState, ctx: &mut Context<Self>) {
+        self.state = msg.0;
+    }
+}
+
+pub struct GetNodes;
+
+impl Message for GetNodes {
+    type Result = Result<HashMap<NodeId, NodeInfo>, ()>;
+}
+
+impl Handler<GetNodes> for Network {
+    type Result = Result<HashMap<NodeId, NodeInfo>, ()>;
+
+    fn handle(&mut self, _: GetNodes, ctx: &mut Context<Self>) -> Self::Result {
+        Ok(self.nodes_info.clone())
+    }
+}
+
 pub struct DiscoverNodes;
 
 impl Message for DiscoverNodes {
@@ -172,12 +215,34 @@ impl Actor for Network {
 
     fn started(&mut self, ctx: &mut Context<Self>) {
         let network_address = self.address.as_ref().unwrap().clone();
+        let cluster_state_route = format!("http://{}/cluster/state", self.discovery_host.as_str());
 
         println!("Listening on {}", network_address);
         println!("Local node id: {}", self.id);
 
         self.listen(ctx);
         self.nodes_connected.push(self.id);
+
+        Arbiter::spawn(
+            client.get(cluster_state_route)
+                .send()
+                .and_then(|res| {
+                    let mut res = res;
+                    res.body().then(|resp| {
+                        if let Ok(body) = resp {
+                            let state = serde_json::from_slice::<Result<NetworkState, ()>>(&body)
+                                .unwrap().unwrap();
+
+                            if state == NetworkState::Cluster {
+                                // TODO:: Send register command to cluster
+                            }
+                        }
+
+                        futures::future::ok(())
+                    })
+                })
+                .map_err(|e| println!("HTTP Cluster Error {:?}", e))
+        );
 
         let nodes = self.nodes_info.clone();
 

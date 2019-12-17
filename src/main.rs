@@ -16,7 +16,7 @@ use std::sync::Arc;
 use raftor::{
     config::ConfigSchema,
     hash_ring,
-    network::{GetNode, Network},
+    network::{GetNode, GetNodes, GetClusterState, Network},
     raftor::Raftor,
     server::{self, Server},
     session::Session,
@@ -51,6 +51,28 @@ fn members_route(
         .and_then(|res| Ok(HttpResponse::Ok().json(res)))
 }
 
+fn nodes_route(
+    req: HttpRequest,
+    stream: web::Payload,
+    srv: web::Data<Arc<ServerData>>,
+) -> impl Future<Item = HttpResponse, Error = Error> {
+    srv.net
+        .send(GetNodes)
+        .map_err(Error::from)
+        .and_then(|res| Ok(HttpResponse::Ok().json(res)))
+}
+
+fn state_route(
+    req: HttpRequest,
+    stream: web::Payload,
+    srv: web::Data<Arc<ServerData>>,
+) -> impl Future<Item = HttpResponse, Error = Error> {
+    srv.net
+        .send(GetClusterState)
+        .map_err(Error::from)
+        .and_then(|res| Ok(HttpResponse::Ok().json(res)))
+}
+
 fn room_route(
     req: HttpRequest,
     stream: web::Payload,
@@ -80,6 +102,8 @@ struct ServerData {
 }
 
 fn main() {
+    env_logger::init();
+
     let sys = System::new("raftor");
 
     let args: Vec<String> = env::args().collect();
@@ -111,6 +135,8 @@ fn main() {
                     .finish()
             })))
             .service(web::resource("/node/{uid}").to_async(index_route))
+            .service(web::resource("/cluster/nodes").to_async(nodes_route))
+            .service(web::resource("/cluster/state").to_async(state_route))
             .service(web::resource("/room/{room_id}").to_async(room_route))
             .service(web::resource("/members/{room_id}").to_async(members_route))
             .service(web::resource("/ws/{uid}").to_async(ws_route))

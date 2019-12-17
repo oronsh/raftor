@@ -113,6 +113,14 @@ pub struct TextMessage {
     pub sender_id: String,
 }
 
+impl Handler<server::DisconnectSession> for Session {
+    type Result = ();
+
+    fn handle(&mut self, _: server::DisconnectSession, ctx: &mut Self::Context) {
+        ctx.stop();
+    }
+}
+
 impl Handler<TextMessage> for Session {
     type Result = ();
 

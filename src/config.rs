@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum NetworkType {
@@ -6,7 +6,7 @@ pub enum NetworkType {
     App,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct NodeInfo {
     pub cluster_addr: String,
     pub app_addr: String,
@@ -23,6 +23,7 @@ pub type NodeList = Vec<NodeInfo>;
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct ConfigSchema {
+    pub discovery_host: String,
     pub join_strategy: JoinStrategy,
     pub nodes: NodeList,
 }

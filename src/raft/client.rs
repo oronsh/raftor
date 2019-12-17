@@ -14,6 +14,7 @@ use crate::raft::{
     RaftBuilder, MemRaft,
 };
 use crate::hash_ring::RingType;
+use crate::server::Server;
 
 type ClientResponseHandler = Result<
     ClientPayloadResponse<MemoryStorageResponse>,
@@ -62,6 +63,7 @@ impl RaftClient {
 pub struct InitRaft {
     pub nodes: Vec<NodeId>,
     pub net: Addr<Network>,
+    pub server: Addr<Server>,
 }
 
 #[derive(Message)]
@@ -94,9 +96,10 @@ impl Handler<InitRaft> for RaftClient {
     fn handle(&mut self, msg: InitRaft, ctx: &mut Context<Self>) {
         let nodes = msg.nodes;
         self.net = Some(msg.net);
+        let server = msg.server;
 
         let raft =
-            RaftBuilder::new(self.id, nodes.clone(), self.net.as_ref().unwrap().clone(), self.ring.clone());
+            RaftBuilder::new(self.id, nodes.clone(), self.net.as_ref().unwrap().clone(), self.ring.clone(), server);
         self.register_handlers(raft.clone());
         self.raft = Some(raft);
 

@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate log;
+
 pub mod config;
 pub mod data;
 pub mod hash_ring;

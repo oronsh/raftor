@@ -8,6 +8,7 @@ use actix_raft::{
 
 use crate::hash_ring::RingType;
 use crate::network::Network;
+use crate::server::{Server};
 use std::time::Duration;
 use tempfile::tempdir_in;
 
@@ -32,6 +33,7 @@ impl RaftBuilder {
         members: Vec<NodeId>,
         network: Addr<Network>,
         ring: RingType,
+        server: Addr<Server>,
     ) -> Addr<MemRaft> {
         let id = id;
         let raft_members = members.clone();
@@ -40,16 +42,16 @@ impl RaftBuilder {
         let snapshot_dir = temp_dir.path().to_string_lossy().to_string();
         let config = Config::build(snapshot_dir.clone())
             .election_timeout_min(800)
-            .election_timeout_max(1000)
+            .election_timeout_max(5000)
             .heartbeat_interval(300)
             .metrics_rate(Duration::from_secs(metrics_rate))
-            .snapshot_policy(SnapshotPolicy::Disabled)
+            .snapshot_policy(SnapshotPolicy::default())
             .snapshot_max_chunk_size(10000)
             .validate()
             .expect("Raft config to be created without error.");
 
         let storage =
-            MemoryStorage::create(move |_| MemoryStorage::new(raft_members, snapshot_dir, ring));
+            MemoryStorage::create(move |_| MemoryStorage::new(raft_members, snapshot_dir, ring, server));
 
         let raft_network = network.clone();
         let raft_storage = storage.clone();
