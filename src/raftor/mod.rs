@@ -1,6 +1,5 @@
 use actix::prelude::*;
 use actix_raft::NodeId;
-use actix_web::client::Client;
 use config;
 use std::env;
 use std::sync::{Arc, RwLock};
@@ -59,9 +58,9 @@ impl Raftor {
         let raft = RaftClient::start_in_arbiter(&raft_arb, |_| raft_client);
 
         // create cluster network
-        let mut cluster_net = Network::new(node_id, ring.clone(), registry.clone(), NetworkType::Cluster, raft.clone());
+        let mut cluster_net = Network::new(node_id, ring.clone(), registry.clone(), NetworkType::Cluster, raft.clone(), config.discovery_host.clone());
         // create application network
-        let mut app_net = Network::new(node_id, ring.clone(), registry.clone(), NetworkType::App, raft.clone());
+        let mut app_net = Network::new(node_id, ring.clone(), registry.clone(), NetworkType::App, raft.clone(), config.discovery_host.clone());
 
         cluster_net.configure(config.clone()); // configure network
         cluster_net.bind(cluster_address); // listen on ip and port
@@ -92,8 +91,6 @@ impl Actor for Raftor {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Context<Self>) {
-        let mut client = Client::default();
-
         fut::wrap_future::<_, Self>(self.cluster_net.send(DiscoverNodes))
             .map_err(|err, _, _| panic!(err))
             .and_then(|res, act, ctx| {

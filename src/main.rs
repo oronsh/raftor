@@ -36,6 +36,19 @@ fn index_route(
         .and_then(|res| Ok(HttpResponse::Ok().json(res)))
 }
 
+fn join_cluster_route(
+    req: HttpRequest,
+    stream: web::Payload,
+    srv: web::Data<Arc<ServerData>>,
+) -> impl Future<Item = HttpResponse, Error = Error> {
+    let uid = req.match_info().get("uid").unwrap_or("");
+
+    srv.net
+        .send(GetNode(uid.to_string()))
+        .map_err(Error::from)
+        .and_then(|res| Ok(HttpResponse::Ok().json(res)))
+}
+
 fn members_route(
     req: HttpRequest,
     stream: web::Payload,
@@ -137,6 +150,7 @@ fn main() {
             .service(web::resource("/node/{uid}").to_async(index_route))
             .service(web::resource("/cluster/nodes").to_async(nodes_route))
             .service(web::resource("/cluster/state").to_async(state_route))
+            .service(web::resource("/cluster/join").route(web::put().to_async(join_cluster_route)))
             .service(web::resource("/room/{room_id}").to_async(room_route))
             .service(web::resource("/members/{room_id}").to_async(members_route))
             .service(web::resource("/ws/{uid}").to_async(ws_route))

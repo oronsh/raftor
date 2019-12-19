@@ -1,4 +1,5 @@
 use actix::prelude::*;
+use actix_web::client::Client;
 use actix_raft::{NodeId, RaftMetrics};
 use log::debug;
 use serde::{de::DeserializeOwned, Serialize, Deserialize};
@@ -37,6 +38,7 @@ pub struct Network {
     id: NodeId,
     net_type: NetworkType,
     address: Option<String>,
+    discovery_host: String,
     peers: Vec<String>,
     nodes: BTreeMap<NodeId, Addr<Node>>,
     nodes_connected: Vec<NodeId>,
@@ -52,11 +54,12 @@ pub struct Network {
 }
 
 impl Network {
-    pub fn new(id: NodeId, ring: RingType, registry: Arc<RwLock<HandlerRegistry>>, net_type: NetworkType, raft: Addr<RaftClient>) -> Network {
+    pub fn new(id: NodeId, ring: RingType, registry: Arc<RwLock<HandlerRegistry>>, net_type: NetworkType, raft: Addr<RaftClient>, discovery_host: String) -> Network {
         Network {
             id: id,
             address: None,
             net_type: net_type,
+            discovery_host: discovery_host,
             peers: Vec::new(),
             nodes: BTreeMap::new(),
             nodes_connected: Vec::new(),
@@ -216,6 +219,7 @@ impl Actor for Network {
     fn started(&mut self, ctx: &mut Context<Self>) {
         let network_address = self.address.as_ref().unwrap().clone();
         let cluster_state_route = format!("http://{}/cluster/state", self.discovery_host.as_str());
+        let cluster_nodes_route = format!("http://{}/cluster/nodes", self.discovery_host.as_str());
 
         println!("Listening on {}", network_address);
         println!("Local node id: {}", self.id);
@@ -223,39 +227,63 @@ impl Actor for Network {
         self.listen(ctx);
         self.nodes_connected.push(self.id);
 
-        Arbiter::spawn(
-            client.get(cluster_state_route)
-                .send()
-                .and_then(|res| {
-                    let mut res = res;
-                    res.body().then(|resp| {
-                        if let Ok(body) = resp {
-                            let state = serde_json::from_slice::<Result<NetworkState, ()>>(&body)
-                                .unwrap().unwrap();
+        let mut client = Client::default();
 
-                            if state == NetworkState::Cluster {
-                                // TODO:: Send register command to cluster
-                            }
+        fut::wrap_future::<_, Self>(client.get(cluster_state_route).send())
+            .map_err(|_, _, _| ())
+            .and_then(move |res, _, _| {
+                let mut res = res;
+                fut::wrap_future::<_, Self>(res.body()).then(move |resp, _, _| {
+                    if let Ok(body) = resp {
+                        let state = serde_json::from_slice::<Result<NetworkState, ()>>(&body)
+                            .unwrap().unwrap();
+
+                        if state == NetworkState::Cluster {
+                            // TODO:: Send register command to cluster
+                            return fut::Either::A(fut::wrap_future::<_, Self>(client.get(cluster_nodes_route).send())
+                                                  .map_err(|e, _, _| println!("HTTP Cluster Error {:?}", e))
+                                                  .and_then(|res, act, _| {
+                                                      let mut res = res;
+                                                      fut::wrap_future::<_, Self>(res.body()).then(|resp, act, _| {
+                                                          if let Ok(body) = resp {
+                                                              let nodes = serde_json::from_slice::<Result<HashMap<NodeId, NodeInfo>, ()>>(&body)
+                                                                  .unwrap().unwrap();
+
+                                                              act.nodes_info = nodes;
+
+                                                              // send join cluster request
+                                                              // fut::wrap_future::<_, Self>(client.get(cluster_nodes_route).send()
+                                                          }
+
+                                                          fut::ok(())
+                                                      })
+                                                  })
+                                                  .and_then(|_, _, _| fut::ok(()))
+                            );
                         }
+                    }
 
-                        futures::future::ok(())
-                    })
+                    fut::Either::B(fut::ok(()))
                 })
-                .map_err(|e| println!("HTTP Cluster Error {:?}", e))
-        );
+            })
+            .map_err(|e, _, _| println!("HTTP Cluster Error {:?}", e))
+            .and_then(move |_, act, ctx| {
+                let nodes = act.nodes_info.clone();
 
-        let nodes = self.nodes_info.clone();
+                for (id, node) in &nodes {
+                    let peer = match act.net_type {
+                        NetworkType::App => node.app_addr.clone(),
+                        NetworkType::Cluster => node.cluster_addr.clone(),
+                    };
 
-        for (id, node) in &nodes {
-            let peer = match self.net_type {
-                NetworkType::App => node.app_addr.clone(),
-                NetworkType::Cluster => node.cluster_addr.clone(),
-            };
+                    if peer != *network_address {
+                        act.register_node(*id, peer.as_str(), ctx.address().clone());
+                    }
+                }
 
-            if peer != *network_address {
-                self.register_node(*id, peer.as_str(), ctx.address().clone());
-            }
-        }
+                fut::ok(())
+            })
+            .spawn(ctx);
     }
 }
 
