@@ -17,19 +17,23 @@ impl Handler<messages::AppendEntriesRequest<Data>> for Network {
         msg: messages::AppendEntriesRequest<Data>,
         _ctx: &mut Context<Self>,
     ) -> Self::Result {
-        let node = self.get_node(msg.target).unwrap();
+        if let Some(node) = self.get_node(msg.target) {
 
-        if self.isolated_nodes.contains(&msg.target) || self.isolated_nodes.contains(&msg.leader_id) {
-            return Box::new(fut::err(()));
+            if self.isolated_nodes.contains(&msg.target) || self.isolated_nodes.contains(&msg.leader_id) {
+                return Box::new(fut::err(()));
+            }
+
+            let req = node.send(SendRemoteMessage(msg));
+
+            return Box::new(
+                fut::wrap_future(req)
+                    .map_err(|_, _, _| error!("{}", ERR_ROUTING_FAILURE))
+                    .and_then(|res, _, _| fut::result(res)),
+            );
+
         }
 
-        let req = node.send(SendRemoteMessage(msg));
-
-        Box::new(
-            fut::wrap_future(req)
-                .map_err(|_, _, _| error!("{}", ERR_ROUTING_FAILURE))
-                .and_then(|res, _, _| fut::result(res)),
-        )
+        Box::new(fut::err(()))
     }
 }
 
@@ -37,19 +41,23 @@ impl Handler<messages::VoteRequest> for Network {
     type Result = ResponseActFuture<Self, messages::VoteResponse, ()>;
 
     fn handle(&mut self, msg: messages::VoteRequest, _ctx: &mut Context<Self>) -> Self::Result {
-        let node = self.get_node(msg.target).unwrap();
+        if let Some(node) = self.get_node(msg.target) {
 
-        if self.isolated_nodes.contains(&msg.target) || self.isolated_nodes.contains(&msg.candidate_id) {
-            return Box::new(fut::err(()));
+
+            if self.isolated_nodes.contains(&msg.target) || self.isolated_nodes.contains(&msg.candidate_id) {
+                return Box::new(fut::err(()));
+            }
+
+            let req = node.send(SendRemoteMessage(msg));
+
+            return Box::new(
+                fut::wrap_future(req)
+                    .map_err(|_, _, _| error!("{}", ERR_ROUTING_FAILURE))
+                    .and_then(|res, _, _| fut::result(res)),
+            );
         }
 
-        let req = node.send(SendRemoteMessage(msg));
-
-        Box::new(
-            fut::wrap_future(req)
-                .map_err(|_, _, _| error!("{}", ERR_ROUTING_FAILURE))
-                .and_then(|res, _, _| fut::result(res)),
-        )
+        Box::new(fut::err(()))
     }
 }
 
@@ -61,18 +69,20 @@ impl Handler<messages::InstallSnapshotRequest> for Network {
         msg: messages::InstallSnapshotRequest,
         _ctx: &mut Context<Self>,
     ) -> Self::Result {
-        let node = self.get_node(msg.target).unwrap();
+        if let Some(node) = self.get_node(msg.target) {
+            if self.isolated_nodes.contains(&msg.target) || self.isolated_nodes.contains(&msg.leader_id) {
+                return Box::new(fut::err(()));
+            }
 
-        if self.isolated_nodes.contains(&msg.target) || self.isolated_nodes.contains(&msg.leader_id) {
-            return Box::new(fut::err(()));
+            let req = node.send(SendRemoteMessage(msg));
+
+            return Box::new(
+                fut::wrap_future(req)
+                    .map_err(|_, _, _| error!("{}", ERR_ROUTING_FAILURE))
+                    .and_then(|res, _, _| fut::result(res)),
+            );
         }
 
-        let req = node.send(SendRemoteMessage(msg));
-
-        Box::new(
-            fut::wrap_future(req)
-                .map_err(|_, _, _| error!("{}", ERR_ROUTING_FAILURE))
-                .and_then(|res, _, _| fut::result(res)),
-        )
+        Box::new(fut::err(()))
     }
 }

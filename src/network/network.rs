@@ -51,10 +51,11 @@ pub struct Network {
     ring: RingType,
     raft: Addr<RaftClient>,
     registry: Arc<RwLock<HandlerRegistry>>,
+    info: NodeInfo,
 }
 
 impl Network {
-    pub fn new(id: NodeId, ring: RingType, registry: Arc<RwLock<HandlerRegistry>>, net_type: NetworkType, raft: Addr<RaftClient>, discovery_host: String) -> Network {
+    pub fn new(id: NodeId, ring: RingType, registry: Arc<RwLock<HandlerRegistry>>, net_type: NetworkType, raft: Addr<RaftClient>, discovery_host: String, info: NodeInfo) -> Network {
         Network {
             id: id,
             address: None,
@@ -72,6 +73,7 @@ impl Network {
             ring: ring,
             raft: raft,
             registry: registry,
+            info: info,
         }
     }
 
@@ -85,12 +87,27 @@ impl Network {
     }
 
     /// register a new node to the network
-    pub fn register_node(&mut self, id: NodeId, peer_addr: &str, addr: Addr<Self>) {
+    pub fn register_node(&mut self, id: NodeId, info: &NodeInfo, addr: Addr<Self>) {
+        let info = info.clone();
+
+        let network_address = self.address.as_ref().unwrap().clone();
         let local_id = self.id;
-        let peer_addr = peer_addr.to_owned();
         let net_type = self.net_type.clone();
-        let node = Supervisor::start(move |_| Node::new(id, local_id, peer_addr, addr, net_type));
-        self.nodes.insert(id, node);
+        let peer_addr = match self.net_type {
+            NetworkType::App => info.app_addr.clone(),
+            NetworkType::Cluster => info.cluster_addr.clone(),
+        };
+
+        if peer_addr == *network_address {
+            return ();
+        }
+
+        self.restore_node(id); // restore node if needed
+
+        if !self.nodes.contains_key(&id) {
+            let node = Node::new(id, local_id, peer_addr, addr, net_type, self.info.clone()).start();
+            self.nodes.insert(id, node);
+        }
     }
 
     /// get a node from the network by its id
@@ -130,6 +147,8 @@ impl Handler<NodeDisconnect> for Network {
     fn handle(&mut self, msg: NodeDisconnect, ctx: &mut Context<Self>) {
         let id = msg.0;
         self.isolated_nodes.push(id);
+        self.nodes_info.remove(&id);
+        self.nodes.remove(&id);
 
         if self.net_type != NetworkType::Cluster {
             return ();
@@ -138,9 +157,21 @@ impl Handler<NodeDisconnect> for Network {
         Arbiter::spawn(self.raft.send(RemoveNode(id))
             .map_err(|_| ())
             .and_then(|res| {
-                println!("removed {:?}", res);
                 futures::future::ok(())
             }))
+    }
+}
+
+#[derive(Message)]
+pub struct Handshake(pub NodeId, pub NodeInfo);
+
+impl Handler<Handshake> for Network {
+    type Result = ();
+
+    fn handle(&mut self, msg: Handshake, ctx: &mut Context<Self>) {
+         println!("Registering node {:?}", msg.1);
+        self.nodes_info.insert(msg.0, msg.1.clone());
+        self.register_node(msg.0, &msg.1, ctx.address().clone());
     }
 }
 
@@ -191,7 +222,9 @@ impl Handler<GetNodes> for Network {
     type Result = Result<HashMap<NodeId, NodeInfo>, ()>;
 
     fn handle(&mut self, _: GetNodes, ctx: &mut Context<Self>) -> Self::Result {
-        Ok(self.nodes_info.clone())
+        let nodes = self.nodes_info.clone();
+        println!("Getting nodes {:#?}", nodes);
+        Ok(nodes)
     }
 }
 
@@ -269,16 +302,9 @@ impl Actor for Network {
             .map_err(|e, _, _| println!("HTTP Cluster Error {:?}", e))
             .and_then(move |_, act, ctx| {
                 let nodes = act.nodes_info.clone();
-
-                for (id, node) in &nodes {
-                    let peer = match act.net_type {
-                        NetworkType::App => node.app_addr.clone(),
-                        NetworkType::Cluster => node.cluster_addr.clone(),
-                    };
-
-                    if peer != *network_address {
-                        act.register_node(*id, peer.as_str(), ctx.address().clone());
-                    }
+                println!("about to register nodes {:#?}", nodes);
+                for (id, info) in &nodes {
+                    act.register_node(*id, info, ctx.address().clone());
                 }
 
                 fut::ok(())

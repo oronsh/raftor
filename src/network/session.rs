@@ -7,7 +7,7 @@ use tokio::io::WriteHalf;
 use tokio::net::TcpStream;
 use tokio::sync::oneshot;
 
-use crate::network::{HandlerRegistry, Network, NodeCodec, NodeRequest, NodeResponse, NodeDisconnect, RestoreNode};
+use crate::network::{HandlerRegistry, Network, NodeCodec, NodeRequest, NodeResponse, NodeDisconnect, RestoreNode, Handshake};
 use crate::config::NetworkType;
 use crate::raft::{AddNode, RemoveNode};
 
@@ -77,9 +77,11 @@ impl StreamHandler<NodeRequest, std::io::Error> for NodeSession {
             NodeRequest::Ping => {
                 self.hb = Instant::now();
             }
-            NodeRequest::Join(id) => {
+            NodeRequest::Join(id, info) =>
+            {
+                println!("Joining {}", id);
                 self.id = Some(id);
-                self.network.do_send(RestoreNode(self.id.unwrap()));
+                self.network.do_send(Handshake(self.id.unwrap(), info));
             }
             NodeRequest::Message(mid, type_id, body) => {
                 let (tx, rx) = oneshot::channel();

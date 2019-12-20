@@ -4,7 +4,7 @@ use config;
 use std::env;
 use std::sync::{Arc, RwLock};
 
-use crate::config::{ConfigSchema, NetworkType};
+use crate::config::{ConfigSchema, NetworkType, NodeInfo};
 use crate::hash_ring::{self, RingType};
 use crate::network::{HandlerRegistry, Network, DiscoverNodes, SetClusterState, NetworkState};
 use crate::raft::{RaftClient, MemRaft, RaftBuilder, InitRaft};
@@ -46,6 +46,13 @@ impl Raftor {
         let args: Vec<String> = env::args().collect();
         let cluster_address = args[1].as_str();
         let app_address = args[2].as_str();
+        let public_address  = args[3].as_str();
+
+        let node_info = NodeInfo {
+            cluster_addr: cluster_address.to_owned(),
+            app_addr: app_address.to_owned(),
+            public_addr: app_address.to_owned(),
+        };
 
         // generate local node id
         let node_id = utils::generate_node_id(cluster_address);
@@ -58,9 +65,9 @@ impl Raftor {
         let raft = RaftClient::start_in_arbiter(&raft_arb, |_| raft_client);
 
         // create cluster network
-        let mut cluster_net = Network::new(node_id, ring.clone(), registry.clone(), NetworkType::Cluster, raft.clone(), config.discovery_host.clone());
+        let mut cluster_net = Network::new(node_id, ring.clone(), registry.clone(), NetworkType::Cluster, raft.clone(), config.discovery_host.clone(), node_info.clone());
         // create application network
-        let mut app_net = Network::new(node_id, ring.clone(), registry.clone(), NetworkType::App, raft.clone(), config.discovery_host.clone());
+        let mut app_net = Network::new(node_id, ring.clone(), registry.clone(), NetworkType::App, raft.clone(), config.discovery_host.clone(), node_info.clone());
 
         cluster_net.configure(config.clone()); // configure network
         cluster_net.bind(cluster_address); // listen on ip and port

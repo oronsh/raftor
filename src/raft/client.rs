@@ -167,7 +167,8 @@ impl Handler<ClientRequest> for RaftClient {
                     fut::Either::B(
                         fut::wrap_future::<_, Self>(act.net.as_ref().unwrap().send(GetNodeById(leader)))
                             .map_err(move |err, _, _| panic!("Node {} not found", leader))
-                            .and_then(|node, act, ctx| {
+                            .and_then(move |node, act, ctx| {
+                                println!("About to do something with node {}", leader);
                                 fut::wrap_future::<_, Self>(
                                     node.unwrap().send(SendRemoteMessage(payload)),
                                 )

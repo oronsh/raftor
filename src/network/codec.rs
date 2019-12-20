@@ -5,10 +5,12 @@ use serde::{Deserialize, Serialize};
 use serde_json as json;
 use tokio::codec::{Decoder, Encoder};
 
+use crate::config::NodeInfo;
+
 #[derive(Serialize, Deserialize, Debug)]
 pub enum NodeRequest {
     Ping,
-    Join(NodeId),
+    Join(NodeId, NodeInfo),
     /// Message(msg_id, type_id, payload)
     Message(u64, String, String),
     /// Dispatch(type_id, payload)

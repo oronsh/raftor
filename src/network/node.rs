@@ -16,7 +16,7 @@ use crate::network::{
     ClientNodeCodec, Network, NodeRequest, NodeResponse, PeerConnected,
 };
 
-use crate::config::NetworkType;
+use crate::config::{NetworkType, NodeInfo};
 
 #[derive(PartialEq)]
 enum NodeState {
@@ -34,10 +34,12 @@ pub struct Node {
     requests: HashMap<u64, oneshot::Sender<String>>,
     network: Addr<Network>,
     net_type: NetworkType,
+    info: NodeInfo,
 }
 
 impl Node {
-    pub fn new(id: u64, local_id: NodeId, peer_addr: String, network: Addr<Network>, net_type: NetworkType) -> Self {
+    pub fn new(id: u64, local_id: NodeId, peer_addr: String, network: Addr<Network>, net_type: NetworkType, info: NodeInfo) -> Self {
+        println!("Regsitering INFO {:#?}", info);
         Node {
             id: id,
             local_id: local_id,
@@ -48,6 +50,7 @@ impl Node {
             requests: HashMap::new(),
             network: network,
             net_type: net_type,
+            info: info,
         }
     }
 
@@ -62,7 +65,7 @@ impl Node {
         let remote_addr = self.peer_addr.as_str().parse().unwrap();
         let conn = TcpStream::connect(&remote_addr)
             .map_err(|e| {
-                // println!("Error: {:?}", e);
+                 println!("Error: {:?}", e);
             })
             .map(TcpConnect)
             .into_stream();
@@ -91,12 +94,6 @@ impl Actor for Node {
     }
 }
 
-impl Supervised for Node {
-    fn restarting(&mut self, _ctx: &mut Context<Self>) {
-        self.framed.take();
-    }
-}
-
 #[derive(Message)]
 struct TcpConnect(TcpStream);
 
@@ -117,7 +114,7 @@ impl Handler<TcpConnect> for Node {
         self.framed
             .as_mut()
             .unwrap()
-            .write(NodeRequest::Join(self.local_id));
+            .write(NodeRequest::Join(self.local_id, self.info.clone()));
 
         match self.net_type {
             NetworkType::Cluster => self.hb(ctx),
