@@ -52,6 +52,7 @@ pub struct Network {
     raft: Addr<RaftClient>,
     registry: Arc<RwLock<HandlerRegistry>>,
     info: NodeInfo,
+    join_mode: bool,
 }
 
 impl Network {
@@ -74,6 +75,7 @@ impl Network {
             raft: raft,
             registry: registry,
             info: info,
+            join_mode: false,
         }
     }
 
@@ -169,7 +171,7 @@ impl Handler<Handshake> for Network {
     type Result = ();
 
     fn handle(&mut self, msg: Handshake, ctx: &mut Context<Self>) {
-         println!("Registering node {:?}", msg.1);
+        println!("Registering node {:?}", msg.1);
         self.nodes_info.insert(msg.0, msg.1.clone());
         self.register_node(msg.0, &msg.1, ctx.address().clone());
     }
@@ -231,17 +233,17 @@ impl Handler<GetNodes> for Network {
 pub struct DiscoverNodes;
 
 impl Message for DiscoverNodes {
-    type Result = Result<Vec<NodeId>, ()>;
+    type Result = Result<(Vec<NodeId>, bool), ()>;
 }
 
 impl Handler<DiscoverNodes> for Network {
-    type Result = ResponseActFuture<Self, Vec<NodeId>, ()>;
+    type Result = ResponseActFuture<Self, (Vec<NodeId>, bool), ()>;
 
     fn handle(&mut self, _: DiscoverNodes, _: &mut Context<Self>) -> Self::Result {
         Box::new(
             fut::wrap_future::<_, Self>(Delay::new(Instant::now() + Duration::from_secs(5)))
                 .map_err(|_, _, _| ())
-                .and_then(|_, act: &mut Network, _| fut::result(Ok(act.nodes_connected.clone()))),
+                .and_then(|_, act: &mut Network, _| fut::result(Ok((act.nodes_connected.clone(), act.join_mode)))),
         )
     }
 }
@@ -283,9 +285,7 @@ impl Actor for Network {
                                                                   .unwrap().unwrap();
 
                                                               act.nodes_info = nodes;
-
-                                                              // send join cluster request
-                                                              // fut::wrap_future::<_, Self>(client.get(cluster_nodes_route).send()
+                                                              act.join_mode = true;
                                                           }
 
                                                           fut::ok(())
@@ -524,7 +524,7 @@ impl Handler<RaftMetrics> for Network {
     type Result = ();
 
     fn handle(&mut self, msg: RaftMetrics, _: &mut Context<Self>) -> Self::Result {
-        debug!("Metrics: node={} state={:?} leader={:?} term={} index={} applied={} cfg={{join={} members={:?} non_voters={:?} removing={:?}}}",
+        println!("Metrics: node={} state={:?} leader={:?} term={} index={} applied={} cfg={{join={} members={:?} non_voters={:?} removing={:?}}}",
                msg.id, msg.state, msg.current_leader, msg.current_term, msg.last_log_index, msg.last_applied,
                msg.membership_config.is_in_joint_consensus, msg.membership_config.members,
                msg.membership_config.non_voters, msg.membership_config.removing,

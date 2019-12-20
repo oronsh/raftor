@@ -17,7 +17,7 @@ pub mod storage;
 mod client;
 
 pub use self::{
-    client::{RaftClient, InitRaft, AddNode, RemoveNode}
+    client::{RaftClient, InitRaft, AddNode, RemoveNode, AddRaftNode}
 };
 
 use self::storage::{MemoryStorage, MemoryStorageData, MemoryStorageError, MemoryStorageResponse};

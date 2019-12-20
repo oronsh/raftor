@@ -1,4 +1,5 @@
 use actix::prelude::*;
+use actix_web::client::Client;
 use actix_raft::NodeId;
 use config;
 use std::env;
@@ -7,7 +8,7 @@ use std::sync::{Arc, RwLock};
 use crate::config::{ConfigSchema, NetworkType, NodeInfo};
 use crate::hash_ring::{self, RingType};
 use crate::network::{HandlerRegistry, Network, DiscoverNodes, SetClusterState, NetworkState};
-use crate::raft::{RaftClient, MemRaft, RaftBuilder, InitRaft};
+use crate::raft::{RaftClient, MemRaft, RaftBuilder, InitRaft, AddRaftNode};
 use crate::server::Server;
 use crate::utils;
 
@@ -101,12 +102,27 @@ impl Actor for Raftor {
         fut::wrap_future::<_, Self>(self.cluster_net.send(DiscoverNodes))
             .map_err(|err, _, _| panic!(err))
             .and_then(|res, act, ctx| {
-                let nodes = res.unwrap();
+                let res = res.unwrap();
+                let nodes = res.0;
+                let join_mode = res.1;
+
                 fut::wrap_future::<_, Self>(act.raft.send(InitRaft{ nodes, net: act.cluster_net.clone(), server: act.server.clone() }))
                     .map_err(|err, _, _| panic!(err))
-                    .and_then(|_, act, _| {
+                    .and_then(move |_, act, ctx| {
+                        let mut client = Client::default();
+                        let cluster_nodes_route = format!("http://{}/cluster/join", act.discovery_host.as_str());
+
                         act.app_net.do_send(SetClusterState(NetworkState::Cluster));
                         act.cluster_net.do_send(SetClusterState(NetworkState::Cluster));
+
+                        if join_mode {
+                            fut::wrap_future::<_, Self>(client.put(cluster_nodes_route).send())
+                                .map_err(|err, _, _| println!("Error joining cluster {:?}", err))
+                                .and_then(|res, act, ctx| {
+                                    fut::ok(())
+                                }).spawn(ctx);
+                        }
+
                         fut::ok(())
                     })
             })

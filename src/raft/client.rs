@@ -1,6 +1,6 @@
 use actix::prelude::*;
 use actix_raft::{
-    admin::InitWithConfig,
+    admin::{InitWithConfig, ProposeConfigChange, ProposeConfigChangeError},
     messages::*,
     NodeId, Raft, RaftMetrics,
 };
@@ -68,6 +68,17 @@ pub struct InitRaft {
 
 #[derive(Message)]
 pub struct AddNode(pub NodeId);
+
+#[derive(Message)]
+pub struct AddRaftNode(pub NodeId);
+
+impl Handler<AddRaftNode> for RaftClient {
+    type Result = ();
+
+    fn handle(&mut self, msg: AddRaftNode, ctx: &mut Context<Self>) {
+        let id = msg.0;
+    }
+}
 
 #[derive(Message)]
 pub struct RemoveNode(pub NodeId);
