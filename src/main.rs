@@ -4,6 +4,7 @@ use actix_files as fs;
 use actix_web::{
     http::header, middleware::Logger, web, App, Error, HttpRequest, HttpResponse, HttpServer,
     Responder,
+    error
 };
 use actix_web_actors::ws;
 use config;
@@ -12,15 +13,18 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
+use actix_raft::NodeId;
+
 
 use raftor::{
-    config::ConfigSchema,
+    config::{ConfigSchema, NodeInfo},
     hash_ring,
     network::{GetNode, GetNodes, GetClusterState, Network},
     raftor::Raftor,
     server::{self, Server},
     session::Session,
     utils,
+    raft::{RaftClient, AddRaftNode},
 };
 
 fn index_route(
@@ -37,16 +41,15 @@ fn index_route(
 }
 
 fn join_cluster_route(
+    node_id: web::Json<NodeId>,
     req: HttpRequest,
     stream: web::Payload,
     srv: web::Data<Arc<ServerData>>,
-) -> impl Future<Item = HttpResponse, Error = Error> {
-    let uid = req.match_info().get("uid").unwrap_or("");
+) ->  HttpResponse {
 
-    srv.net
-        .send(GetNode(uid.to_string()))
-        .map_err(Error::from)
-        .and_then(|res| Ok(HttpResponse::Ok().json(res)))
+    println!("got join request with id {:#?}", node_id);
+    srv.raft.do_send(AddRaftNode(*node_id));
+    HttpResponse::Ok().json(()) // <- send json response
 }
 
 fn members_route(
@@ -112,6 +115,7 @@ fn ws_route(
 struct ServerData {
     server: Addr<Server>,
     net: Addr<Network>,
+    raft: Addr<RaftClient>,
 }
 
 fn main() {
@@ -127,6 +131,7 @@ fn main() {
     let state = Arc::new(ServerData {
         server: raftor.server.clone(),
         net: raftor.app_net.clone(),
+        raft: raftor.raft.clone(),
     });
 
     let _ = raftor.start();
@@ -135,7 +140,7 @@ fn main() {
         App::new()
             .wrap(
                 Cors::new()
-                    .allowed_methods(vec!["GET", "POST"])
+                    .allowed_methods(vec!["GET", "POST", "PUT"])
                     .allowed_headers(vec![header::AUTHORIZATION, header::ACCEPT])
                     .allowed_header(header::CONTENT_TYPE)
                     .max_age(3600),

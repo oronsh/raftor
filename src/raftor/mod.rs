@@ -16,13 +16,14 @@ mod handlers;
 
 pub struct Raftor {
     id: NodeId,
-    raft: Addr<RaftClient>,
+    pub raft: Addr<RaftClient>,
     pub app_net: Addr<Network>,
     pub cluster_net: Addr<Network>,
     pub server: Addr<Server>,
     discovery_host: String,
     ring: RingType,
     registry: Arc<RwLock<HandlerRegistry>>,
+    info: NodeInfo,
 }
 
 impl Raftor {
@@ -52,7 +53,7 @@ impl Raftor {
         let node_info = NodeInfo {
             cluster_addr: cluster_address.to_owned(),
             app_addr: app_address.to_owned(),
-            public_addr: app_address.to_owned(),
+            public_addr: public_address.to_owned(),
         };
 
         // generate local node id
@@ -91,6 +92,7 @@ impl Raftor {
             ring: ring,
             registry: registry,
             discovery_host: config.discovery_host.clone(),
+            info: node_info,
         }
     }
 }
@@ -106,7 +108,7 @@ impl Actor for Raftor {
                 let nodes = res.0;
                 let join_mode = res.1;
 
-                fut::wrap_future::<_, Self>(act.raft.send(InitRaft{ nodes, net: act.cluster_net.clone(), server: act.server.clone() }))
+                fut::wrap_future::<_, Self>(act.raft.send(InitRaft{ nodes, net: act.cluster_net.clone(), server: act.server.clone(),  join_mode: join_mode }))
                     .map_err(|err, _, _| panic!(err))
                     .and_then(move |_, act, ctx| {
                         let mut client = Client::default();
@@ -116,7 +118,9 @@ impl Actor for Raftor {
                         act.cluster_net.do_send(SetClusterState(NetworkState::Cluster));
 
                         if join_mode {
-                            fut::wrap_future::<_, Self>(client.put(cluster_nodes_route).send())
+                            fut::wrap_future::<_, Self>(client.put(cluster_nodes_route)
+                                                        .header("Content-Type", "application/json")
+                                                        .send_json(&act.id))
                                 .map_err(|err, _, _| println!("Error joining cluster {:?}", err))
                                 .and_then(|res, act, ctx| {
                                     fut::ok(())

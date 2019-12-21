@@ -7,6 +7,7 @@ use actix_raft::{
 use log::debug;
 use std::time::{Duration, Instant};
 use std::sync::{Arc, RwLock};
+use serde::{Serialize, Deserialize};
 use tokio::timer::Delay;
 use crate::network::{Network, remote::SendRemoteMessage, DiscoverNodes, GetCurrentLeader, GetNodeById, HandlerRegistry};
 use crate::raft::{
@@ -49,12 +50,13 @@ impl RaftClient {
 
     }
 
-    fn register_handlers(&mut self, raft: Addr<MemRaft>) {
+    fn register_handlers(&mut self, raft: Addr<MemRaft>, client: Addr<Self>) {
         let mut registry = self.registry.write().unwrap();
 
         registry.register::<AppendEntriesRequest<MemoryStorageData>, _>(raft.clone());
         registry.register::<VoteRequest, _>(raft.clone());
         registry.register::<InstallSnapshotRequest, _>(raft.clone());
+        registry.register::<AddRaftNode, _>(client.clone());
         registry.register::<ClientPayload<MemoryStorageData, MemoryStorageResponse, MemoryStorageError>, _>(raft.clone());
     }
 }
@@ -64,12 +66,13 @@ pub struct InitRaft {
     pub nodes: Vec<NodeId>,
     pub net: Addr<Network>,
     pub server: Addr<Server>,
+    pub join_mode: bool,
 }
 
 #[derive(Message)]
 pub struct AddNode(pub NodeId);
 
-#[derive(Message)]
+#[derive(Serialize, Deserialize ,Message)]
 pub struct AddRaftNode(pub NodeId);
 
 impl Handler<AddRaftNode> for RaftClient {
@@ -77,6 +80,45 @@ impl Handler<AddRaftNode> for RaftClient {
 
     fn handle(&mut self, msg: AddRaftNode, ctx: &mut Context<Self>) {
         let id = msg.0;
+
+        let payload = ProposeConfigChange::new(vec![id], vec![]);
+
+        ctx.spawn(
+            fut::wrap_future::<_, Self>(self.net.as_ref().unwrap().send(GetCurrentLeader))
+                .map_err(|err, _, _| panic!(err))
+                .and_then(move |res, act, ctx| {
+                    let leader = res.unwrap();
+
+                    if leader == act.id {
+                        if let Some(ref raft) = act.raft {
+                            println!(" ------------- About to propose config change");
+                            return fut::Either::A(
+                                fut::wrap_future::<_, Self>(raft.send(payload))
+                                    .map_err(|err, _, _| panic!(err))
+                                    .and_then(move |res, act, ctx| {
+                                        ctx.notify(AddNode(id));
+                                        fut::ok(())
+                                    }),
+                            );
+                        }
+                    }
+
+                    fut::Either::B(
+                        fut::wrap_future::<_, Self>(act.net.as_ref().unwrap().send(GetNodeById(leader)))
+                            .map_err(move |err, _, _| panic!("Node {} not found", leader))
+                            .and_then(move |node, act, ctx| {
+                                println!("-------------- Sending remote proposal to leader");
+                                fut::wrap_future::<_, Self>(
+                                    node.unwrap().send(SendRemoteMessage(msg)),
+                                )
+                                    .map_err(|err, _, _| println!("Error {:?}", err))
+                                    .and_then(|res, act, ctx| {
+                                        fut::ok(())
+                                    })
+                            }),
+                    )
+                }),
+        );
     }
 }
 
@@ -109,10 +151,20 @@ impl Handler<InitRaft> for RaftClient {
         self.net = Some(msg.net);
         let server = msg.server;
 
+        let nodes = if msg.join_mode {
+            vec![self.id]
+        } else {
+            nodes.clone()
+        };
+
         let raft =
             RaftBuilder::new(self.id, nodes.clone(), self.net.as_ref().unwrap().clone(), self.ring.clone(), server);
-        self.register_handlers(raft.clone());
+        self.register_handlers(raft.clone(), ctx.address().clone());
         self.raft = Some(raft);
+
+        if msg.join_mode {
+            return ();
+        }
 
         fut::wrap_future::<_, Self>(Delay::new(Instant::now() + Duration::from_secs(5)))
             .map_err(|_, _, _| ())

@@ -171,7 +171,6 @@ impl Handler<Handshake> for Network {
     type Result = ();
 
     fn handle(&mut self, msg: Handshake, ctx: &mut Context<Self>) {
-        println!("Registering node {:?}", msg.1);
         self.nodes_info.insert(msg.0, msg.1.clone());
         self.register_node(msg.0, &msg.1, ctx.address().clone());
     }
@@ -225,7 +224,6 @@ impl Handler<GetNodes> for Network {
 
     fn handle(&mut self, _: GetNodes, ctx: &mut Context<Self>) -> Self::Result {
         let nodes = self.nodes_info.clone();
-        println!("Getting nodes {:#?}", nodes);
         Ok(nodes)
     }
 }
@@ -302,7 +300,7 @@ impl Actor for Network {
             .map_err(|e, _, _| println!("HTTP Cluster Error {:?}", e))
             .and_then(move |_, act, ctx| {
                 let nodes = act.nodes_info.clone();
-                println!("about to register nodes {:#?}", nodes);
+
                 for (id, info) in &nodes {
                     act.register_node(*id, info, ctx.address().clone());
                 }

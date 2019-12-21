@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 use tokio::sync::oneshot;
 
 use crate::network::Node;
-use crate::raft::MemRaft;
+use crate::raft::{MemRaft, AddRaftNode};
 use crate::server;
 
 pub trait RemoteMessage: Message + Send + Sync + Serialize + DeserializeOwned
@@ -99,6 +99,12 @@ impl<D: AppData, R: AppDataResponse, E: AppError> RemoteMessage
 {
     fn type_id() -> &'static str {
         "ClientPayload"
+    }
+}
+
+impl RemoteMessage for AddRaftNode {
+    fn type_id() -> &'static str {
+        "AddRaftNode"
     }
 }
 
