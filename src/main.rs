@@ -24,7 +24,7 @@ use raftor::{
     server::{self, Server},
     session::Session,
     utils,
-    raft::{RaftClient, AddRaftNode},
+    raft::{RaftClient, ChangeRaftClusterConfig},
 };
 
 fn index_route(
@@ -48,7 +48,7 @@ fn join_cluster_route(
 ) ->  HttpResponse {
 
     println!("got join request with id {:#?}", node_id);
-    srv.raft.do_send(AddRaftNode(*node_id));
+    srv.raft.do_send(ChangeRaftClusterConfig(vec![*node_id], vec![]));
     HttpResponse::Ok().json(()) // <- send json response
 }
 

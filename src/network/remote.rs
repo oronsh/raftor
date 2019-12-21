@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 use tokio::sync::oneshot;
 
 use crate::network::Node;
-use crate::raft::{MemRaft, AddRaftNode};
+use crate::raft::{MemRaft, ChangeRaftClusterConfig};
 use crate::server;
 
 pub trait RemoteMessage: Message + Send + Sync + Serialize + DeserializeOwned
@@ -102,9 +102,9 @@ impl<D: AppData, R: AppDataResponse, E: AppError> RemoteMessage
     }
 }
 
-impl RemoteMessage for AddRaftNode {
+impl RemoteMessage for ChangeRaftClusterConfig {
     fn type_id() -> &'static str {
-        "AddRaftNode"
+        "ChangeRaftClusterConfig"
     }
 }
 

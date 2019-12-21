@@ -8,7 +8,7 @@ use std::sync::{Arc, RwLock};
 use crate::config::{ConfigSchema, NetworkType, NodeInfo};
 use crate::hash_ring::{self, RingType};
 use crate::network::{HandlerRegistry, Network, DiscoverNodes, SetClusterState, NetworkState};
-use crate::raft::{RaftClient, MemRaft, RaftBuilder, InitRaft, AddRaftNode};
+use crate::raft::{RaftClient, MemRaft, RaftBuilder, InitRaft};
 use crate::server::Server;
 use crate::utils;
 
@@ -36,7 +36,7 @@ impl Raftor {
             .merge(config::Environment::with_prefix("APP"))
             .unwrap();
 
-        let config = config.try_into::<ConfigSchema>().unwrap();
+        let mut config = config.try_into::<ConfigSchema>().unwrap();
 
         // create consistent hash ring
         let ring = hash_ring::Ring::new(10);
@@ -58,6 +58,8 @@ impl Raftor {
 
         // generate local node id
         let node_id = utils::generate_node_id(cluster_address);
+
+        Raftor::add_node_to_config(node_info.clone(), &mut config);
 
         let cluster_arb = Arbiter::new();
         let app_arb = Arbiter::new();
@@ -93,6 +95,14 @@ impl Raftor {
             registry: registry,
             discovery_host: config.discovery_host.clone(),
             info: node_info,
+        }
+    }
+
+    fn add_node_to_config(node: NodeInfo, config: &mut ConfigSchema) {
+        let index = config.nodes.iter().position(|r| r == &node);
+
+        if index.is_none() {
+            config.nodes.push(node);
         }
     }
 }

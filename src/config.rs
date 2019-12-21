@@ -6,7 +6,7 @@ pub enum NetworkType {
     App,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct NodeInfo {
     pub cluster_addr: String,
     pub app_addr: String,

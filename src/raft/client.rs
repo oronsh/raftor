@@ -56,7 +56,7 @@ impl RaftClient {
         registry.register::<AppendEntriesRequest<MemoryStorageData>, _>(raft.clone());
         registry.register::<VoteRequest, _>(raft.clone());
         registry.register::<InstallSnapshotRequest, _>(raft.clone());
-        registry.register::<AddRaftNode, _>(client.clone());
+        registry.register::<ChangeRaftClusterConfig, _>(client.clone());
         registry.register::<ClientPayload<MemoryStorageData, MemoryStorageResponse, MemoryStorageError>, _>(raft.clone());
     }
 }
@@ -72,16 +72,17 @@ pub struct InitRaft {
 #[derive(Message)]
 pub struct AddNode(pub NodeId);
 
-#[derive(Serialize, Deserialize ,Message)]
-pub struct AddRaftNode(pub NodeId);
+#[derive(Serialize, Deserialize ,Message, Clone)]
+pub struct ChangeRaftClusterConfig(pub Vec<NodeId>, pub Vec<NodeId>);
 
-impl Handler<AddRaftNode> for RaftClient {
+impl Handler<ChangeRaftClusterConfig> for RaftClient {
     type Result = ();
 
-    fn handle(&mut self, msg: AddRaftNode, ctx: &mut Context<Self>) {
-        let id = msg.0;
+    fn handle(&mut self, msg: ChangeRaftClusterConfig, ctx: &mut Context<Self>) {
+        let nodes_to_add = msg.0.clone();
+        let nodes_to_remove = msg.1.clone();
 
-        let payload = ProposeConfigChange::new(vec![id], vec![]);
+        let payload = ProposeConfigChange::new(nodes_to_add.clone(), nodes_to_remove.clone());
 
         ctx.spawn(
             fut::wrap_future::<_, Self>(self.net.as_ref().unwrap().send(GetCurrentLeader))
@@ -96,7 +97,10 @@ impl Handler<AddRaftNode> for RaftClient {
                                 fut::wrap_future::<_, Self>(raft.send(payload))
                                     .map_err(|err, _, _| panic!(err))
                                     .and_then(move |res, act, ctx| {
-                                        ctx.notify(AddNode(id));
+                                        for id in nodes_to_add.iter() {
+                                            ctx.notify(AddNode(*id));
+                                        }
+
                                         fut::ok(())
                                     }),
                             );
@@ -109,7 +113,7 @@ impl Handler<AddRaftNode> for RaftClient {
                             .and_then(move |node, act, ctx| {
                                 println!("-------------- Sending remote proposal to leader");
                                 fut::wrap_future::<_, Self>(
-                                    node.unwrap().send(SendRemoteMessage(msg)),
+                                    node.unwrap().send(SendRemoteMessage(msg.clone())),
                                 )
                                     .map_err(|err, _, _| println!("Error {:?}", err))
                                     .and_then(|res, act, ctx| {
