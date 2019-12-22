@@ -144,6 +144,7 @@ impl Handler<RemoveNode> for RaftClient {
     fn handle(&mut self, msg: RemoveNode, ctx: &mut Context<Self>) {
         let payload = remove_node(msg.0);
         ctx.notify(ClientRequest(payload));
+        ctx.notify(ChangeRaftClusterConfig(vec![], vec![msg.0]));
     }
 }
 
