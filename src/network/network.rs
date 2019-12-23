@@ -161,6 +161,18 @@ impl Handler<NodeDisconnect> for Network {
             .map_err(|_, _, _| ())
             .and_then(move |res, act, ctx| {
                 let leader = res.unwrap();
+
+                if leader == id {
+                    fut::wrap_future::<_, Self>(Delay::new(Instant::now() + Duration::from_secs(1)))
+                        .map_err(|_, _, _| ())
+                        .and_then(|_, act, ctx| {
+                            ctx.notify(msg);
+                            fut::ok(())
+                        }).spawn(ctx);
+
+                    return fut::ok(());
+                }
+
                 if leader == act.id {
                     Arbiter::spawn(act.raft.send(RemoveNode(id))
                                    .map_err(|_| ())
