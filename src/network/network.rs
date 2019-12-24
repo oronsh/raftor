@@ -274,6 +274,7 @@ impl Actor for Network {
 
     fn started(&mut self, ctx: &mut Context<Self>) {
         let network_address = self.address.as_ref().unwrap().clone();
+
         let cluster_state_route = format!("http://{}/cluster/state", self.discovery_host.as_str());
         let cluster_nodes_route = format!("http://{}/cluster/nodes", self.discovery_host.as_str());
 

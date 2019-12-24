@@ -137,7 +137,7 @@ impl Actor for Raftor {
                                                         .send_json(&act.id))
                                 .map_err(|err, _, _| println!("Error joining cluster {:?}", err))
                                 .and_then(|res, act, ctx| {
-                                    fut::wrap_future::<_, Self>(Delay::new(Instant::now() + Duration::from_secs(5)))
+                                    fut::wrap_future::<_, Self>(Delay::new(Instant::now() + Duration::from_secs(1)))
                                         .map_err(|_, _, _| ())
                                         .and_then(|_, act, ctx| {
                                             act.raft.do_send(AddNode(act.id));
