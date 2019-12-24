@@ -46,7 +46,6 @@ impl NodeSession {
             }
 
             // Reply heartbeat
-            println!("Send hb to {}", act.id.as_ref().unwrap());
             act.framed.write(NodeResponse::Ping);
         });
     }

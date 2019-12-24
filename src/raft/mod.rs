@@ -41,7 +41,7 @@ impl RaftBuilder {
         let temp_dir = tempdir_in("/tmp").expect("Tempdir to be created without error.");
         let snapshot_dir = temp_dir.path().to_string_lossy().to_string();
         let config = Config::build(snapshot_dir.clone())
-            .election_timeout_min(800)
+            .election_timeout_min(3000)
             .election_timeout_max(5000)
             .heartbeat_interval(300)
             .metrics_rate(Duration::from_secs(metrics_rate))

@@ -4,11 +4,13 @@ use actix_raft::NodeId;
 use config;
 use std::env;
 use std::sync::{Arc, RwLock};
+use tokio::timer::Delay;
+use std::time::{Duration, Instant};
 
 use crate::config::{ConfigSchema, NetworkType, NodeInfo};
 use crate::hash_ring::{self, RingType};
 use crate::network::{HandlerRegistry, Network, DiscoverNodes, SetClusterState, NetworkState};
-use crate::raft::{RaftClient, MemRaft, RaftBuilder, InitRaft};
+use crate::raft::{RaftClient, MemRaft, RaftBuilder, InitRaft, AddNode};
 use crate::server::Server;
 use crate::utils;
 
@@ -60,6 +62,8 @@ impl Raftor {
         let node_id = utils::generate_node_id(cluster_address);
 
         Raftor::add_node_to_config(node_info.clone(), &mut config);
+
+        println!("============= Nodes from config: {:#?}", config);
 
         let cluster_arb = Arbiter::new();
         let app_arb = Arbiter::new();
@@ -133,7 +137,12 @@ impl Actor for Raftor {
                                                         .send_json(&act.id))
                                 .map_err(|err, _, _| println!("Error joining cluster {:?}", err))
                                 .and_then(|res, act, ctx| {
-                                    fut::ok(())
+                                    fut::wrap_future::<_, Self>(Delay::new(Instant::now() + Duration::from_secs(5)))
+                                        .map_err(|_, _, _| ())
+                                        .and_then(|_, act, ctx| {
+                                            act.raft.do_send(AddNode(act.id));
+                                            fut::ok(())
+                                        })
                                 }).spawn(ctx);
                         }
 

@@ -98,7 +98,7 @@ impl Handler<ChangeRaftClusterConfig> for RaftClient {
                                     .map_err(|err, _, _| panic!(err))
                                     .and_then(move |res, act, ctx| {
                                         for id in nodes_to_add.iter() {
-                                            ctx.notify(AddNode(*id));
+                                            // ctx.notify(AddNode(*id));
                                         }
 
                                         fut::ok(())

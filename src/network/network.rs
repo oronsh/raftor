@@ -128,7 +128,7 @@ impl Network {
         }
 
         debug!("Isolating network for node {}.", &id);
-        self.isolated_nodes.push(id);
+        // self.isolated_nodes.push(id);
     }
 
     /// Restore the network of the specified node.
@@ -302,8 +302,10 @@ impl Actor for Network {
                                                       let mut res = res;
                                                       fut::wrap_future::<_, Self>(res.body()).then(|resp, act, _| {
                                                           if let Ok(body) = resp {
-                                                              let nodes = serde_json::from_slice::<Result<HashMap<NodeId, NodeInfo>, ()>>(&body)
+                                                              let mut nodes = serde_json::from_slice::<Result<HashMap<NodeId, NodeInfo>, ()>>(&body)
                                                                   .unwrap().unwrap();
+
+                                                              nodes.insert(act.id, act.info.clone());
 
                                                               act.nodes_info = nodes;
                                                               act.join_mode = true;
@@ -484,6 +486,8 @@ impl Handler<GetNode> for Network {
     fn handle(&mut self, msg: GetNode, ctx: &mut Context<Self>) -> Self::Result {
         let ring = self.ring.read().unwrap();
         let node_id = ring.get_node(msg.0).unwrap();
+        println!("============ Getting node {}", node_id);
+        println!("nodes info now --------- {:#?}", self.nodes_info);
 
         let default = NodeInfo {
             public_addr: "".to_owned(),
@@ -522,16 +526,24 @@ impl Handler<GetCurrentLeader> for Network {
                 Box::new(fut::result(Ok(leader)))
             } else {
                 Box::new(
-                    fut::wrap_future::<_, Self>(ctx.address().send(msg))
+                    fut::wrap_future::<_, Self>(Delay::new(Instant::now() + Duration::from_secs(1)))
                         .map_err(|_, _, _| ())
-                        .and_then(|res, _, _| fut::result(res))
+                        .and_then(|_, _, ctx| {
+                            fut::wrap_future::<_, Self>(ctx.address().send(msg))
+                                .map_err(|_, _, _| ())
+                                .and_then(|res, _, _| fut::result(res))
+                        })
                 )
             }
         } else {
             Box::new(
-                    fut::wrap_future::<_, Self>(ctx.address().send(msg))
+                    fut::wrap_future::<_, Self>(Delay::new(Instant::now() + Duration::from_secs(1)))
                         .map_err(|_, _, _| ())
-                        .and_then(|res, _, _| fut::result(res))
+                        .and_then(|_, _, ctx| {
+                            fut::wrap_future::<_, Self>(ctx.address().send(msg))
+                                .map_err(|_, _, _| ())
+                                .and_then(|res, _, _| fut::result(res))
+                        })
                 )
         }
     }
