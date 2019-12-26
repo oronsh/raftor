@@ -63,8 +63,6 @@ impl Raftor {
 
         Raftor::add_node_to_config(node_info.clone(), &mut config);
 
-        println!("============= Nodes from config: {:#?}", config);
-
         let cluster_arb = Arbiter::new();
         let app_arb = Arbiter::new();
         let raft_arb = Arbiter::new();

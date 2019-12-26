@@ -17,6 +17,7 @@ impl Handler<messages::AppendEntriesRequest<Data>> for Network {
         msg: messages::AppendEntriesRequest<Data>,
         _ctx: &mut Context<Self>,
     ) -> Self::Result {
+        let target_id = msg.target;
         if let Some(node) = self.get_node(msg.target) {
 
             if self.isolated_nodes.contains(&msg.target) || self.isolated_nodes.contains(&msg.leader_id) {
@@ -27,7 +28,7 @@ impl Handler<messages::AppendEntriesRequest<Data>> for Network {
 
             return Box::new(
                 fut::wrap_future(req)
-                    .map_err(|_, _, _| error!("{}", ERR_ROUTING_FAILURE))
+                    .map_err(move |_, _, _| error!("{} {}", ERR_ROUTING_FAILURE, target_id))
                     .and_then(|res, _, _| fut::result(res)),
             );
 

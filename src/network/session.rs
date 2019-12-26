@@ -62,10 +62,7 @@ impl Actor for NodeSession {
     }
 
     fn stopped(&mut self, ctx: &mut Context<Self>) {
-        if self.net_type == NetworkType::Cluster {
-            println!("About to remove node...");
-            self.network.do_send(NodeDisconnect(self.id.unwrap()));
-        }
+        self.network.do_send(NodeDisconnect(self.id.unwrap()));
     }
 }
 
@@ -79,7 +76,6 @@ impl StreamHandler<NodeRequest, std::io::Error> for NodeSession {
             }
             NodeRequest::Join(id, info) =>
             {
-                println!("Joining {}", id);
                 self.id = Some(id);
                 self.network.do_send(Handshake(self.id.unwrap(), info));
             }

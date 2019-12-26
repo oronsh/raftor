@@ -177,7 +177,6 @@ impl Handler<NodeDisconnect> for Network {
                     Arbiter::spawn(act.raft.send(RemoveNode(id))
                                    .map_err(|_| ())
                                    .and_then(|res| {
-                                       println!("removed {:?}", res);
                                        futures::future::ok(())
                                    }));
                 }
@@ -487,8 +486,6 @@ impl Handler<GetNode> for Network {
     fn handle(&mut self, msg: GetNode, ctx: &mut Context<Self>) -> Self::Result {
         let ring = self.ring.read().unwrap();
         let node_id = ring.get_node(msg.0).unwrap();
-        println!("============ Getting node {}", node_id);
-        println!("nodes info now --------- {:#?}", self.nodes_info);
 
         let default = NodeInfo {
             public_addr: "".to_owned(),
@@ -558,7 +555,7 @@ impl Handler<RaftMetrics> for Network {
     type Result = ();
 
     fn handle(&mut self, msg: RaftMetrics, _: &mut Context<Self>) -> Self::Result {
-        println!("Metrics: node={} state={:?} leader={:?} term={} index={} applied={} cfg={{join={} members={:?} non_voters={:?} removing={:?}}}",
+        debug!("Metrics: node={} state={:?} leader={:?} term={} index={} applied={} cfg={{join={} members={:?} non_voters={:?} removing={:?}}}",
                msg.id, msg.state, msg.current_leader, msg.current_term, msg.last_log_index, msg.last_applied,
                msg.membership_config.is_in_joint_consensus, msg.membership_config.members,
                msg.membership_config.non_voters, msg.membership_config.removing,
