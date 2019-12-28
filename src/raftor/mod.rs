@@ -138,7 +138,7 @@ impl Actor for Raftor {
                                     fut::wrap_future::<_, Self>(Delay::new(Instant::now() + Duration::from_secs(1)))
                                         .map_err(|_, _, _| ())
                                         .and_then(|_, act, ctx| {
-                                            act.raft.do_send(AddNode(act.id));
+//                                            act.raft.do_send(AddNode(act.id));
                                             fut::ok(())
                                         })
                                 }).spawn(ctx);
