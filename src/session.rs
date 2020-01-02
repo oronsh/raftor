@@ -20,7 +20,7 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn new(id: &str, room: &str, server: Addr<Server>) -> Self {
+    pub fn new(id: &str, room: &str, server: Addr<Server>, sessions: ReadHandle<String, Arc<Addr<Session>>>) -> Self {
         Session {
             id: id.to_owned(),
             room: room.to_owned(),

@@ -12,6 +12,7 @@ use crate::hash_ring::{self, RingType};
 use crate::network::{HandlerRegistry, Network, DiscoverNodes, SetClusterState, NetworkState};
 use crate::raft::{RaftClient, MemRaft, RaftBuilder, InitRaft, AddNode};
 use crate::server::Server;
+use crate::session::Session as UserSession;
 use crate::utils;
 
 mod handlers;

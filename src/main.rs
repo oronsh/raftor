@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
 use actix_raft::NodeId;
-
+use evmap::ShallowCopy;
 
 use raftor::{
     config::{ConfigSchema, NodeInfo},
