@@ -10,7 +10,7 @@ const ERR_ROUTING_FAILURE: &str = "Failed to send RCP to node target.";
 impl RaftNetwork<Data> for Network {}
 
 impl Handler<messages::AppendEntriesRequest<Data>> for Network {
-    type Result = ResponseActFuture<Self, messages::AppendEntriesResponse, ()>;
+    type Result = ResponseActFuture<Self, Result<messages::AppendEntriesResponse, ()>>;
 
     fn handle(
         &mut self,
@@ -39,7 +39,7 @@ impl Handler<messages::AppendEntriesRequest<Data>> for Network {
 }
 
 impl Handler<messages::VoteRequest> for Network {
-    type Result = ResponseActFuture<Self, messages::VoteResponse, ()>;
+    type Result = ResponseActFuture<Self, Result<messages::VoteResponse, ()>>;
 
     fn handle(&mut self, msg: messages::VoteRequest, _ctx: &mut Context<Self>) -> Self::Result {
         if let Some(node) = self.get_node(msg.target) {
@@ -63,7 +63,7 @@ impl Handler<messages::VoteRequest> for Network {
 }
 
 impl Handler<messages::InstallSnapshotRequest> for Network {
-    type Result = ResponseActFuture<Self, messages::InstallSnapshotResponse, ()>;
+    type Result = ResponseActFuture<Self, Result<messages::InstallSnapshotResponse, ()>>;
 
     fn handle(
         &mut self,

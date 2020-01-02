@@ -30,21 +30,26 @@ impl Server {
 }
 
 #[derive(Message)]
+#[rtype(result = "()")]
 pub struct Connect(pub String, pub Addr<Session>);
 
 #[derive(Message)]
+#[rtype(result = "()")]
 pub struct Disconnect(pub String);
 
 #[derive(Message)]
+#[rtype(result = "()")]
 pub struct DisconnectSession;
 
 #[derive(Message, Serialize, Deserialize, Debug)]
+#[rtype(result = "()")]
 pub struct Join {
     pub room_id: String,
     pub uid: String,
 }
 
 #[derive(Message, Serialize, Deserialize, Debug)]
+#[rtype(result = "()")]
 pub struct SendRecipient {
     pub recipient_id: String,
     pub uid: String,
@@ -52,6 +57,7 @@ pub struct SendRecipient {
 }
 
 #[derive(Message, Serialize, Deserialize, Debug)]
+#[rtype(result = "()")]
 pub struct SendRoom {
     pub room_id: String,
     pub uid: String,
@@ -59,6 +65,7 @@ pub struct SendRoom {
 }
 
 #[derive(Message)]
+#[rtype(result = "()")]
 pub struct Rebalance;
 
 impl Actor for Server {
@@ -134,6 +141,7 @@ impl Handler<SendRoom> for Server {
 }
 
 #[derive(Message, Serialize, Deserialize, Debug)]
+#[rtype(result = "()")]
 pub struct CreateRoom {
     pub room_id: String,
 }

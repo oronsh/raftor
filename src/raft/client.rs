@@ -8,7 +8,7 @@ use log::debug;
 use std::time::{Duration, Instant};
 use std::sync::{Arc, RwLock};
 use serde::{Serialize, Deserialize};
-use tokio::timer::Delay;
+use tokio::time::Delay;
 use crate::network::{Network, remote::SendRemoteMessage, DiscoverNodes, GetCurrentLeader, GetNodeById, HandlerRegistry};
 use crate::raft::{
     storage::{MemoryStorageData, MemoryStorageError, MemoryStorageResponse},
@@ -62,6 +62,7 @@ impl RaftClient {
 }
 
 #[derive(Message)]
+#[rtype(result = "()")]
 pub struct InitRaft {
     pub nodes: Vec<NodeId>,
     pub net: Addr<Network>,
@@ -70,9 +71,11 @@ pub struct InitRaft {
 }
 
 #[derive(Message)]
+#[rtype(result = "()")]
 pub struct AddNode(pub NodeId);
 
 #[derive(Serialize, Deserialize ,Message, Clone)]
+#[rtype(result = "()")]
 pub struct ChangeRaftClusterConfig(pub Vec<NodeId>, pub Vec<NodeId>);
 
 impl Handler<ChangeRaftClusterConfig> for RaftClient {
@@ -127,6 +130,7 @@ impl Handler<ChangeRaftClusterConfig> for RaftClient {
 }
 
 #[derive(Message)]
+#[rtype(result = "()")]
 pub struct RemoveNode(pub NodeId);
 
 impl Handler<AddNode> for RaftClient {

@@ -68,7 +68,7 @@ impl Actor for NodeSession {
 
 impl actix::io::WriteHandler<std::io::Error> for NodeSession {}
 
-impl StreamHandler<NodeRequest, std::io::Error> for NodeSession {
+impl StreamHandler<NodeRequest> for NodeSession {
     fn handle(&mut self, msg: NodeRequest, ctx: &mut Context<Self>) {
         match msg {
             NodeRequest::Ping => {

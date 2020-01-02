@@ -81,6 +81,7 @@ impl Actor for Session {
 }
 
 #[derive(Message)]
+#[rtype(result = "()")]
 pub struct SendMessage(pub String);
 
 impl Handler<SendMessage> for Session {
@@ -102,12 +103,14 @@ pub enum Cmds {
 }
 
 #[derive(Message, Serialize, Deserialize, Debug)]
+#[rtype(result = "()")]
 pub struct Message {
     content: String,
     cmd: Cmds,
 }
 
 #[derive(Message, Serialize, Deserialize, Debug)]
+#[rtype(result = "()")]
 pub struct TextMessage {
     pub content: String,
     pub sender_id: String,
@@ -132,7 +135,7 @@ impl Handler<TextMessage> for Session {
     }
 }
 
-impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
+impl StreamHandler<ws::Message> for Session {
     fn handle(&mut self, msg: ws::Message, ctx: &mut Self::Context) {
         let uid = self.id.to_owned();
 

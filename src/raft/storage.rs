@@ -115,7 +115,7 @@ impl RaftStorage<MemoryStorageData, MemoryStorageResponse, MemoryStorageError> f
 }
 
 impl Handler<GetInitialState<MemoryStorageError>> for MemoryStorage {
-    type Result = ResponseActFuture<Self, InitialState, MemoryStorageError>;
+    type Result = ResponseActFuture<Self, Result<InitialState, MemoryStorageError>>;
 
     fn handle(
         &mut self,
@@ -132,7 +132,7 @@ impl Handler<GetInitialState<MemoryStorageError>> for MemoryStorage {
 }
 
 impl Handler<SaveHardState<MemoryStorageError>> for MemoryStorage {
-    type Result = ResponseActFuture<Self, (), MemoryStorageError>;
+    type Result = ResponseActFuture<Self, Result<(), MemoryStorageError>>;
 
     fn handle(
         &mut self,
@@ -145,7 +145,7 @@ impl Handler<SaveHardState<MemoryStorageError>> for MemoryStorage {
 }
 
 impl Handler<GetLogEntries<MemoryStorageData, MemoryStorageError>> for MemoryStorage {
-    type Result = ResponseActFuture<Self, Vec<Entry>, MemoryStorageError>;
+    type Result = ResponseActFuture<Self, Result<Vec<Entry>, MemoryStorageError>>;
 
     fn handle(
         &mut self,
@@ -162,7 +162,7 @@ impl Handler<GetLogEntries<MemoryStorageData, MemoryStorageError>> for MemorySto
 }
 
 impl Handler<AppendEntryToLog<MemoryStorageData, MemoryStorageError>> for MemoryStorage {
-    type Result = ResponseActFuture<Self, (), MemoryStorageError>;
+    type Result = ResponseActFuture<Self, Result<(), MemoryStorageError>>;
 
     fn handle(
         &mut self,
@@ -175,7 +175,7 @@ impl Handler<AppendEntryToLog<MemoryStorageData, MemoryStorageError>> for Memory
 }
 
 impl Handler<ReplicateToLog<MemoryStorageData, MemoryStorageError>> for MemoryStorage {
-    type Result = ResponseActFuture<Self, (), MemoryStorageError>;
+    type Result = ResponseActFuture<Self, Result<(), MemoryStorageError>>;
 
     fn handle(
         &mut self,
@@ -192,7 +192,7 @@ impl Handler<ReplicateToLog<MemoryStorageData, MemoryStorageError>> for MemorySt
 impl Handler<ApplyEntryToStateMachine<MemoryStorageData, MemoryStorageResponse, MemoryStorageError>>
     for MemoryStorage
 {
-    type Result = ResponseActFuture<Self, MemoryStorageResponse, MemoryStorageError>;
+    type Result = ResponseActFuture<Self, Result<MemoryStorageResponse, MemoryStorageError>>;
 
     fn handle(
         &mut self,
@@ -229,7 +229,7 @@ impl Handler<ApplyEntryToStateMachine<MemoryStorageData, MemoryStorageResponse, 
 }
 
 impl Handler<ReplicateToStateMachine<MemoryStorageData, MemoryStorageError>> for MemoryStorage {
-    type Result = ResponseActFuture<Self, (), MemoryStorageError>;
+    type Result = ResponseActFuture<Self, Result<(), MemoryStorageError>>;
 
     fn handle(
         &mut self,
@@ -265,7 +265,7 @@ impl Handler<ReplicateToStateMachine<MemoryStorageData, MemoryStorageError>> for
 }
 
 impl Handler<CreateSnapshot<MemoryStorageError>> for MemoryStorage {
-    type Result = ResponseActFuture<Self, CurrentSnapshotData, MemoryStorageError>;
+    type Result = ResponseActFuture<Self, Result<CurrentSnapshotData, MemoryStorageError>>;
 
     fn handle(
         &mut self,
@@ -328,7 +328,7 @@ impl Handler<CreateSnapshot<MemoryStorageError>> for MemoryStorage {
 }
 
 impl Handler<InstallSnapshot<MemoryStorageError>> for MemoryStorage {
-    type Result = ResponseActFuture<Self, (), MemoryStorageError>;
+    type Result = ResponseActFuture<Self, Result<(), MemoryStorageError>>;
 
     fn handle(
         &mut self,
@@ -374,7 +374,7 @@ impl Handler<InstallSnapshot<MemoryStorageError>> for MemoryStorage {
 }
 
 impl Handler<GetCurrentSnapshot<MemoryStorageError>> for MemoryStorage {
-    type Result = ResponseActFuture<Self, Option<CurrentSnapshotData>, MemoryStorageError>;
+    type Result = ResponseActFuture<Self, Result<Option<CurrentSnapshotData>, MemoryStorageError>>;
 
     fn handle(
         &mut self,

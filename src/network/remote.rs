@@ -19,6 +19,7 @@ where
 
 /// SendRemoteMessage(Message)
 #[derive(Message)]
+#[rtype(result = "()")]
 pub struct DispatchMessage<M>(pub M)
 where
     M: RemoteMessage + 'static,
@@ -73,6 +74,7 @@ where
 }
 
 #[derive(Message, Clone)]
+#[rtype(result = "()")]
 pub struct RegisterHandler(pub Addr<MemRaft>);
 
 /// Impl RemoteMessage for RaftNetwork messages

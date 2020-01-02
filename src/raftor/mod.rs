@@ -4,7 +4,7 @@ use actix_raft::NodeId;
 use config;
 use std::env;
 use std::sync::{Arc, RwLock};
-use tokio::timer::Delay;
+use tokio::time::Delay;
 use std::time::{Duration, Instant};
 
 use crate::config::{ConfigSchema, NetworkType, NodeInfo};

@@ -3,7 +3,7 @@ use actix_raft::NodeId;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::time::Duration;
-use tokio::codec::FramedRead;
+use tokio_util::codec::FramedRead;
 use tokio::io::{AsyncRead, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::sync::oneshot;
@@ -95,9 +95,11 @@ impl Actor for Node {
 }
 
 #[derive(Message)]
+#[rtype(result = "()")]
 struct TcpConnect(TcpStream);
 
 #[derive(Message)]
+#[rtype(result = "()")]
 struct Connect;
 
 impl Handler<TcpConnect> for Node {
@@ -178,7 +180,7 @@ impl Handler<Connect> for Node {
 
 impl actix::io::WriteHandler<std::io::Error> for Node {}
 
-impl StreamHandler<NodeResponse, std::io::Error> for Node {
+impl StreamHandler<NodeResponse> for Node {
     fn handle(&mut self, msg: NodeResponse, _ctx: &mut Context<Self>) {
         match msg {
             NodeResponse::Result(mid, data) => {

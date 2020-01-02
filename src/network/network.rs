@@ -6,10 +6,10 @@ use serde::{de::DeserializeOwned, Serialize, Deserialize};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
-use tokio::codec::FramedRead;
+use tokio_util::codec::FramedRead;
 use tokio::io::AsyncRead;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::timer::Delay;
+use tokio::time::Delay;
 
 use crate::network::{
     remote::{RemoteMessage, SendRemoteMessage, DispatchMessage},
@@ -141,6 +141,7 @@ impl Network {
 }
 
 #[derive(Message)]
+#[rtype(result = "()")]
 pub struct NodeDisconnect(pub NodeId);
 
 impl Handler<NodeDisconnect> for Network {
@@ -187,6 +188,7 @@ impl Handler<NodeDisconnect> for Network {
 }
 
 #[derive(Message)]
+#[rtype(result = "()")]
 pub struct Handshake(pub NodeId, pub NodeInfo);
 
 impl Handler<Handshake> for Network {
@@ -199,6 +201,7 @@ impl Handler<Handshake> for Network {
 }
 
 #[derive(Message)]
+#[rtype(result = "()")]
 pub struct RestoreNode(pub NodeId);
 
 impl Handler<RestoreNode> for Network {
@@ -225,6 +228,7 @@ impl Handler<GetClusterState> for Network {
 }
 
 #[derive(Message)]
+#[rtype(result = "()")]
 pub struct SetClusterState(pub NetworkState);
 
 impl Handler<SetClusterState> for Network {
@@ -257,7 +261,7 @@ impl Message for DiscoverNodes {
 }
 
 impl Handler<DiscoverNodes> for Network {
-    type Result = ResponseActFuture<Self, (Vec<NodeId>, bool), ()>;
+    type Result = ResponseActFuture<Self, Result<(Vec<NodeId>, bool), ()>>;
 
     fn handle(&mut self, _: DiscoverNodes, _: &mut Context<Self>) -> Self::Result {
         Box::new(
@@ -337,6 +341,7 @@ impl Actor for Network {
 }
 
 #[derive(Message)]
+#[rtype(result = "()")]
 struct NodeConnect(TcpStream);
 
 impl Network {
@@ -376,7 +381,7 @@ impl Message for GetNodeAddr {
 }
 
 impl Handler<GetNodeAddr> for Network {
-    type Result = ResponseActFuture<Self, Addr<Node>, ()>;
+    type Result = ResponseActFuture<Self, Result<Addr<Node>, ()>>;
 
     fn handle(&mut self, msg: GetNodeAddr, ctx: &mut Context<Self>) -> Self::Result {
         let res = fut::wrap_future(ctx.address().send(GetNode(msg.0)))
@@ -415,6 +420,7 @@ impl Handler<GetNodeById> for Network {
 }
 
 #[derive(Message)]
+#[rtype(result = "()")]
 pub struct DistributeMessage<M>(pub String, pub M)
 where
     M: RemoteMessage + 'static,
@@ -499,6 +505,7 @@ impl Handler<GetNode> for Network {
 }
 
 #[derive(Message)]
+#[rtype(result = "()")]
 pub struct PeerConnected(pub NodeId);
 
 impl Handler<PeerConnected> for Network {
@@ -516,7 +523,7 @@ impl Message for GetCurrentLeader {
 }
 
 impl Handler<GetCurrentLeader> for Network {
-    type Result = ResponseActFuture<Self, NodeId, ()>;
+    type Result = ResponseActFuture<Self, Result<NodeId, ()>>;
 
     fn handle(&mut self, msg: GetCurrentLeader, ctx: &mut Context<Self>) -> Self::Result {
         if let Some(ref mut metrics) = self.metrics {
